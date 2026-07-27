@@ -12,7 +12,6 @@ This skill follows the [Agent Skills spec](https://agentskills.io/specification)
 
 - **Claude Code** — place in `.claude/skills/`, invoke via `/jq-research-coding-skill`
 - **Codex** — place in `.codex/skills/`
-- **Cursor / VS Code** — install via plugin marketplace
 - **Any MCP + Agent Skills compatible platform**
 
 ## Prerequisites

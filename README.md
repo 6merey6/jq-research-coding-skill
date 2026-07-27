@@ -12,7 +12,6 @@
 
 - **Claude Code** — 放入 `.claude/skills/` 目录，通过 `/jq-research-coding-skill` 调用
 - **Codex** — 放入 `.codex/skills/` 目录
-- **Cursor / VS Code** — 通过插件市场安装
 - **其他支持 MCP + Agent Skills 的平台**
 
 ## 前置依赖
