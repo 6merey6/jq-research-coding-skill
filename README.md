@@ -26,9 +26,20 @@
 **推荐额外配置（可选）：**
 - **firecrawl** — jq-docs 不可用时（如大陆无代理）的 fallback，见 `references/fallback-doc-urls.md`
 
-### MCP 配置示例（`.mcp.json`）
+### MCP 配置示例
+
+MCP 服务器有三个 scope 可选，每个服务器可独立配置到不同 scope：
+
+| Scope | 存储位置 | 生效范围 |
+|-------|---------|---------|
+| `project` | 项目根目录 `.mcp.json` | 仅当前项目；可通过 git 共享给团队 |
+| `user` | `~/.claude.json` | 所有项目全局生效；可跨机器同步 |
+| `local` | `~/.claude.json` | 所有项目全局生效；标记 local-only，不参与同步 |
+
+**project scope（团队共享，推荐）：**
 
 ```json
+// 项目根目录 .mcp.json
 {
   "mcpServers": {
     "chrome-devtools": {
@@ -42,6 +53,44 @@
   }
 }
 ```
+
+**user scope（全局生效，跨机器同步）：**
+
+```json
+// ~/.claude.json
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--browser-url=http://127.0.0.1:9222"]
+    },
+    "jq-docs": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/jiaweizhang1995/jq-docs-mcp", "jq-docs-mcp"]
+    }
+  }
+}
+```
+
+**local scope（全局生效，仅本机，不同步）：**
+
+```json
+// ~/.claude.json（和 user scope 同一文件，标记 local-only）
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--browser-url=http://127.0.0.1:9222"]
+    },
+    "jq-docs": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/jiaweizhang1995/jq-docs-mcp", "jq-docs-mcp"]
+    }
+  }
+}
+```
+
+> `user` 和 `local` 都存储在 `~/.claude.json` 中。区别在于 `local` 标记为本地配置不参与同步（适合存放个人密钥等敏感内容），而 `user` 可以跨机器同步。`project` 存储在项目 `.mcp.json` 中，可被 git 追踪共享。配置后需重启会话。
 
 ## 计费提醒
 

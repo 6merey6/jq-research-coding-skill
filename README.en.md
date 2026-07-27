@@ -26,9 +26,20 @@ Two MCP servers required:
 **Optional (recommended):**
 - **firecrawl** — fallback when jq-docs is unavailable (e.g., mainland China without proxy), see `references/fallback-doc-urls.md`
 
-### MCP Config Example (`.mcp.json`)
+### MCP Config Example
+
+Three scopes are available. Each server can be configured independently:
+
+| Scope | Location | Effect |
+|-------|---------|--------|
+| `project` | Project root `.mcp.json` | This project only; can be shared via git |
+| `user` | `~/.claude.json` | All projects; syncs across machines |
+| `local` | `~/.claude.json` | All projects; marked local-only, never synced |
+
+**Project scope (team sharing, recommended):**
 
 ```json
+// Project root .mcp.json
 {
   "mcpServers": {
     "chrome-devtools": {
@@ -42,6 +53,44 @@ Two MCP servers required:
   }
 }
 ```
+
+**User scope (all projects, synced):**
+
+```json
+// ~/.claude.json
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--browser-url=http://127.0.0.1:9222"]
+    },
+    "jq-docs": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/jiaweizhang1995/jq-docs-mcp", "jq-docs-mcp"]
+    }
+  }
+}
+```
+
+**Local scope (all projects, this machine only, not synced):**
+
+```json
+// ~/.claude.json (same file as user scope, marked local-only)
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--browser-url=http://127.0.0.1:9222"]
+    },
+    "jq-docs": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/jiaweizhang1995/jq-docs-mcp", "jq-docs-mcp"]
+    }
+  }
+}
+```
+
+> `user` and `local` are both stored in `~/.claude.json`. `local` entries are marked local-only (not synced — ideal for personal API keys), while `user` entries sync across machines. `project` scope stores in `.mcp.json` tracked by git. Restart your session after configuration.
 
 ## Billing Notice
 
