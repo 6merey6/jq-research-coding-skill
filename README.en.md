@@ -59,11 +59,55 @@ Place the repository contents into your platform's skills directory, ensure MCP 
 
 ## Usage
 
-1. Start Chrome with remote debugging:
+This skill intelligently detects your current Chrome state. All three scenarios below are handled automatically:
+
+### Preparation
+
+**A. Start from scratch (easiest for first-time users)**
+
+First-time setup only:
+
+1. Start Chrome with remote debugging (**one-time step** — your login session persists in the debug profile):
    - Windows: `chrome.exe --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\chrome-debug-profile"`
    - macOS: `/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-profile-stable`
-2. Open your JoinQuant notebook in the browser
-3. Invoke in your AI assistant: `/jq-research-coding-skill help me write a strategy`
+2. Visit `https://www.joinquant.com` in Chrome and log in to your JoinQuant account
+3. Invoke the skill in your AI assistant:
+   ```
+   /jq-research-coding-skill create a new notebook and write an SMA crossover strategy
+   ```
+   The skill will **automatically open the research page**, **create the notebook**, **write code and run it** — no manual browser interaction needed.
+
+For subsequent sessions, Chrome stays running — just skip to step 3.
+
+**B. Want to open just the research page**
+
+If Chrome is running but no JoinQuant pages are open:
+
+```
+/jq-research-coding-skill open the research environment and open my xxx.ipynb
+```
+
+The skill detects the missing research page and opens it automatically. If a login page appears, it will wait for you to log in before continuing.
+
+**C. Research + notebook pages already open**
+
+If you already have `https://www.joinquant.com/research` and a notebook page open in Chrome:
+
+```
+/jq-research-coding-skill help me modify the cal_portfolio_weight_series function
+```
+
+The skill will directly select the notebook page and start working — no duplicate pages opened.
+
+### Automated Workflow
+
+Once activated, the skill executes the following closed loop:
+
+1. **Look up docs** — query JoinQuant APIs via jq-docs MCP (or firecrawl/WebFetch fallback)
+2. **Ask about testing** — ask if you want to test the APIs first (optional)
+3. **Write code** — inject code into notebook, execute, read results (full text, no truncation)
+4. **Clean up** — automatically delete test cells after verification
+5. **Handle exceptions** — auto-diagnose kernel disconnection, restart kernel, warn at >80% memory and suggest batch + `del` cleanup
 
 ## File Structure
 

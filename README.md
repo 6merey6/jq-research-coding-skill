@@ -64,12 +64,55 @@ git clone https://github.com/<your-username>/jq-research-coding-skill.git \
 
 ## 使用
 
-1. 启动带调试端口的 Chrome：
+本 skill 会智能检测当前 Chrome 状态，以下三种场景都能自动处理：
+
+### 准备阶段
+
+**A. 完全不启动 Chrome（最简单）**
+
+第一次使用只需：
+
+1. 启动带调试端口的 Chrome（**仅需做一次**，之后 profile 会保留登录态）：
+   - Windows：`chrome.exe --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\chrome-debug-profile"`
+   - macOS：`/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-profile-stable`
+2. Chrome 打开后，访问 `https://www.joinquant.com` 并登录聚宽账号
+3. 在 AI 助手中调用 skill：
    ```
-   chrome.exe --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\chrome-debug-profile"
+   /jq-research-coding-skill 帮我新建一个 notebook，写一个均线策略
    ```
-2. 在浏览器中打开聚宽 study 页面，登录并打开目标 notebook
-3. 在 AI 助手中调用：`/jq-research-coding-skill 帮我写一个策略`
+   skill 会**自动打开研究环境页面**、**创建 notebook**、**写代码并运行**——全程不需要你手动操作浏览器。
+
+后续使用时 Chrome 已保持运行，只需第 3 步即可。
+
+**B. 只想打开研究环境页面**
+
+如果 Chrome 已在运行但没有任何聚宽页面：
+
+```
+/jq-research-coding-skill 打开研究环境，打开我的 xxx.ipynb
+```
+
+skill 会自动检测页面状态，缺失的研究环境页面会自动打开。如果检测到登录页，会等你登录后再继续。
+
+**C. 已经打开了研究环境和 notebook 页面**
+
+如果已经在浏览器中打开了 `https://www.joinquant.com/research` 和具体的 notebook 页面：
+
+```
+/jq-research-coding-skill 帮我修改 cal_portfolio_weight_series 函数
+```
+
+skill 会直接选中 notebook 页面开始工作，不重复打开任何页面。
+
+### 工作流程
+
+激活后，skill 会自动执行以下闭环：
+
+1. **查文档** — 用 jq-docs MCP（或 firecrawl/WebFetch 兜底）查询需求涉及的聚宽 API
+2. **问测试** — 询问是否先测试 API（可选）
+3. **写代码** — 在 notebook 中注入代码、执行、读取结果（完整不截断）
+4. **清理** — 测试通过后自动删除测试 cell
+5. **异常处理** — 内核断开自动诊断和重启，内存 >80% 主动警告并建议分批+del 释放
 
 ## 文件结构
 
