@@ -24,7 +24,7 @@ Two MCP servers required:
 | **jq-docs** | JoinQuant API documentation lookup |
 
 **Optional (recommended):**
-- **firecrawl** — fallback when jq-docs is unavailable (e.g., mainland China without proxy), see `references/fallback-doc-urls.md`
+- **firecrawl** — fallback when jq-docs is unavailable (e.g., Mainland China without a proxy), see `references/fallback-doc-urls.md`
 
 ### MCP Config Example
 
