@@ -44,6 +44,10 @@
 }
 ```
 
+## 计费提醒
+
+本 skill 依赖两个（或三个）MCP 服务器，每次操作都会产生 MCP tool call。**按工具调用次数计费的 coding plan 会比按 token 计费的 plan 消耗更多额度。** 如果你的 plan 按调用次数计费，请注意控制操作粒度，合并可以一次完成的操作。
+
 ## 安装
 
 ### Claude Code

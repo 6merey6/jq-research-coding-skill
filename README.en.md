@@ -44,6 +44,10 @@ Two MCP servers required:
 }
 ```
 
+## Billing Notice
+
+This skill depends on two (or three) MCP servers — every operation generates MCP tool calls. **Plans billed by tool-call count will consume more credits than token-based plans.** If your plan charges per call, batch operations where possible.
+
 ## Installation
 
 ### Claude Code
