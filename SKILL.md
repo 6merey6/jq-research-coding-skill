@@ -1,0 +1,495 @@
+---
+name: jq-research-coding-skill
+description: Use when writing or debugging code in JoinQuant (聚宽) research notebooks, encountering kernel disconnection, memory overflow, cell execution issues, or needing to query JoinQuant API documentation. Triggers on mentions of 聚宽, JoinQuant, 研究环境, notebook kernel problems, 内存溢出.
+---
+
+# 聚宽研究环境 Notebook 编码
+
+## 概述
+
+本 skill 涵盖通过 Chrome DevTools MCP 操作聚宽（JoinQuant）研究 notebook 的完整工作流。强制规范代码编写、执行和调试规则 —— 在回测场景中，数据获取出错可能造成重大财务损失。
+
+## 前置依赖 — MCP 服务器
+
+需要两个 MCP 服务器。通常已在项目 `.mcp.json` 中配置好。
+
+| 服务器 | 用途 | 配置 |
+|--------|------|------|
+| **chrome-devtools** | 浏览器操控（notebook 交互） | `npx -y chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222` |
+| **jq-docs** | 聚宽 API 文档查询 | `uvx --from git+https://github.com/jiaweizhang1995/jq-docs-mcp jq-docs-mcp` |
+
+> ⚠️ **计费提醒：** 此 skill 依赖两个 MCP 服务器，每次操作都会产生 MCP tool call。对于**按工具调用次数计费**的 coding plan，会比按 token 计费的 plan 消耗更多额度。如果你的 plan 按调用次数计费，请注意控制操作粒度，合并可以一次完成的操作。
+
+### jq-docs 的替代方案（大陆无代理时）
+
+jq-docs MCP 需要从 GitHub 拉取，在大陆无代理时可能不可用。此时按优先级使用以下方式查阅聚宽文档：
+
+| 优先级 | 方式 | 适用条件 |
+|--------|------|---------|
+| **1** | jq-docs MCP（`lookup_function`、`search_docs`） | 首选，有代理/GitHub 可访问时 |
+| **2** | firecrawl MCP（`firecrawl_scrape`） | **推荐配置**（可选），抓取完整页面内容，已验证可用 |
+| **3** | 原生 WebFetch（内置工具） | 原生 Claude 模型可直接用；非原生模型可能被拦截 |
+
+> firecrawl 为非必需 MCP，询问用户 scope 时需包含"不配置"选项。配置命令见上方 MCP 配置检查。
+
+**常用 `help/data/*` 文档 URL：**
+
+| 数据分类 | URL |
+|---------|-----|
+| 股票数据（行情/财务/函数） | `https://www.joinquant.com/help/data/stock` |
+| 基金数据 | `https://www.joinquant.com/help/data/fund` |
+| 指数数据 | `https://www.joinquant.com/help/data/index` |
+| 期货数据 | `https://www.joinquant.com/help/data/futures` |
+
+**使用示例（jq-docs MCP 不可用时）：**
+- firecrawl: `firecrawl_scrape("https://www.joinquant.com/help/data/stock", formats=["markdown"])` → 获取完整页面后提取 API 信息
+- WebFetch: `WebFetch("https://www.joinquant.com/help/data/stock", "提取 get_price 的参数、返回值和示例")` → 原生模型直接分析
+
+> **注意：**
+> - `https://www.joinquant.com/help/api/help` 是策略回测文档（含 `order`/`initialize`/`handle_data`），不适用于研究环境，不要引用
+> - 只在 `help/data/*` 中查找研究环境可用的 API
+> - 非原生 Claude 模型（如 DeepSeek）可能无法使用 WebFetch；建议额外配置 firecrawl MCP
+> - 大陆网络环境可能导致任何在线抓取方式都不稳定
+
+### 推荐 `.mcp.json` 配置（project scope）
+
+```json
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--browser-url=http://127.0.0.1:9222"]
+    },
+    "jq-docs": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/jiaweizhang1995/jq-docs-mcp", "jq-docs-mcp"]
+    }
+  }
+}
+```
+
+**为什么用 `--browser-url` 而非 `--autoConnect`：**
+- `--autoConnect` 要求 Chrome 144+ 且需在 `chrome://inspect/#remote-debugging` 中手动启用
+- `--browser-url=http://127.0.0.1:9222` 兼容任何 Chrome 版本，更可靠
+
+### MCP 配置检查（skill 激活时执行）
+
+每次操作 notebook 前，逐个验证 MCP 服务器是否可用：
+
+1. 尝试调用 `list_pages`（chrome-devtools）— 如果工具不存在，说明 MCP 服务器缺失
+2. 尝试调用 `list_functions`（jq-docs）— 如果工具不存在，说明 MCP 服务器缺失
+
+**如果某个服务器缺失**，用 AskUserQuestion 单独询问用户安装到哪个 scope，向用户讲清三者区别后再让用户选择：
+
+| Scope | 存储位置 | 生效范围 |
+|-------|---------|---------|
+| `project` | 项目根目录 `.mcp.json` | 仅当前项目；可通过 git 共享给团队 |
+| `user` | `~/.claude.json` | 所有项目全局生效；可跨机器同步 |
+| `local` | `~/.claude.json` | 所有项目全局生效；标记为 local-only，不跨机器同步 |
+
+**chrome-devtools（必须，无"跳过"选项）：**
+```bash
+claude mcp add --scope <用户选择> chrome-devtools -- npx -y chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222
+```
+
+**jq-docs（必须，无"跳过"选项）：**
+```bash
+claude mcp add --scope <用户选择> jq-docs -- uvx --from git+https://github.com/jiaweizhang1995/jq-docs-mcp jq-docs-mcp
+```
+
+**firecrawl（可选，推荐配置）：**
+jq-docs MCP 在大陆无代理时不可用，firecrawl 可作为稳定后备来抓取聚宽在线文档。询问用户时需包含"不配置"选项：
+```bash
+claude mcp add --scope <用户选择> firecrawl -- npx -y @anthropic-ai/mcp-server-firecrawl
+```
+
+> 添加 MCP 服务器后需重启会话。每个服务器可配置到不同 scope。
+
+## Chrome 启动 — 开启远程调试
+
+MCP 服务器必须连接到开启了 DevTools 的 Chrome 实例。
+
+### 智能启动 Chrome（notebook 操作前的必要步骤）
+
+**不要盲目关闭所有 Chrome 窗口。** 先检测再行动：
+
+**(A) 先检查 Chrome 调试端口是否已开启：**
+```bash
+powershell.exe -Command "Test-NetConnection -ComputerName 127.0.0.1 -Port 9222 -InformationLevel Quiet"
+```
+如果返回 `True`，说明 Chrome 已在调试模式运行 → 直接使用，跳到 (C)。
+
+**(B) 端口未开启，检查是否已有 Chrome 进程在运行：**
+- 如果有 Chrome 进程但没有调试端口 → 需要用户手动关闭所有 Chrome 窗口，然后用调试参数重新启动
+- 如果没有 Chrome 进程 → 直接启动带调试参数的 Chrome
+
+启动命令（选择对应平台）：
+
+**Windows：**
+```bash
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="%USERPROFILE%\chrome-debug-profile"
+```
+
+**macOS：**
+```bash
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-profile-stable
+```
+
+**Linux：**
+```bash
+/usr/bin/google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-profile-stable
+```
+
+**关键限制：** Chrome 130+ **必须**使用非默认 `--user-data-dir`。即使显式指定默认路径（如 `C:\Users\<name>\AppData\Local\Google\Chrome\User Data`）也会被拒绝。务必使用独立的调试 profile 目录。
+
+> 调试 profile 是持久化的 — 聚宽登录态、cookie、设置都会跨重启保留。首次使用此 profile 时需要登录聚宽，后续会话保持登录状态。
+
+**(C) Chrome 调试端口已开启（或刚启动），检查页面列表：**
+- 用 `list_pages` 查看当前浏览器页面
+- 如果**已有** notebook 页面和 `https://www.joinquant.com/research` 页面 → 直接复用，跳到准备工作流程
+- 如果**缺少**某些页面 → 按准备工作流程补充打开
+- **`https://www.joinquant.com/research` 是绝对必需的** — 即使已有 notebook 页面，没有研究页面也必须打开
+
+## 准备工作流程（按步执行）
+
+严格按照以下步骤顺序执行，每步确认后再进入下一步。
+
+### 第一步：检查浏览器页面
+
+使用 `list_pages` 查看当前浏览器状态。**必须** 至少包含 `https://www.joinquant.com/research` 页面。
+
+- 如果研究页面不存在 → 使用 `navigate_page` 或 `new_page` 打开 `https://www.joinquant.com/research`
+- 如果弹出登录页面 → 提醒用户登录聚宽平台，用 AskUserQuestion 询问"登录完成了吗？"，确认后再继续
+
+> **⚠️ 规则：** 如果在任何时候发现页面列表中不存在 `https://www.joinquant.com/research` 页面，必须立即重新打开，并提醒用户："必须至少要打开研究环境页面，我才能在聚宽上进行相应的操作。"
+
+### 第二步：选择或创建 Notebook
+
+对研究页面进行 `take_snapshot`。然后使用 AskUserQuestion 询问用户：
+
+> "你希望我新建一个 notebook 还是打开已有的 notebook？"
+
+**如果选择"新建 notebook"：**
+1. 点击"新建"按钮
+2. 在下拉菜单中选择"Python 3"
+3. 重命名：点击 notebook 标题（"Untitled"），输入新名称，点击"重命名"
+
+**如果选择"打开已有 notebook"：**
+1. 在文件列表中点击目标 `.ipynb` 文件链接
+2. 用 `select_page` 选中新打开的 notebook 页面
+
+### 第三步：确认准备工作完成
+
+选中 notebook 页面后确认：
+- [ ] 存在两个页面：研究页面 + notebook 页面
+- [ ] notebook 页面已被选中（使用 `select_page`）
+- [ ] 内核指示器显示"Python 3"和"已信任"
+- [ ] 内存使用合理（notebook 页面内存 < 80%）
+
+## 编码规则 — 必须遵守
+
+以下规则是**强制性**的。违反任何一条都可能导致回测数据错误，造成重大财务损失。
+
+### 规则1：★★★★★ 充分查阅 API 文档
+
+写代码前，**必须**使用 jq-docs 查阅用户需求涉及的**全部**聚宽 API 方法。需了解：
+- 作用（功能说明）
+- 全部参数（名称、类型、是否必填）
+- 返回值结构（类型、列名、索引）
+
+使用 `lookup_function` 查询精确函数名。对于 `query()` 模式和财务数据表，还需用 `lookup_table_columns` 验证字段名。
+
+**严禁猜测 API 行为** — 一个错误的假设可能悄无声息地产生错误的回测数据。
+
+### 规则2：★★★ Cell 放置位置 —— 保证一次运行逻辑完整不报错
+
+核心原则：**确保用户直接"Run All"时，代码逻辑完整且不报错。**
+
+**默认做法 — 末尾新建：**
+- 添加**全新功能**或**新代码块**时，用 `insert_cell_at_index('code', ncells)` 插到末尾
+- 保持顺序：`cell[0] → cell[1] → ... → cell[N]`
+
+**例外 — 回填原 cell：**
+- **修改已有代码**（如重写函数）时，应**替换原 cell 的代码**，而非末尾新建
+- 在末尾重定义同一函数会导致 Run All 时前面的旧代码先执行，中间依赖 cell 可能用到旧版本
+
+**判断标准：**
+- 新增功能 → 末尾新建 | 修改已有代码 → 回填原 cell
+- 如果代码依赖前面的 cell 定义，必须放在依赖之后
+- 最终目标：Run All 一次性通过，无 NameError/ImportError
+
+```javascript
+// 末尾新建
+const ncells = J.notebook.get_cells().length;
+J.notebook.insert_cell_at_index('code', ncells);
+
+// 回填原 cell
+const cells = J.notebook.get_cells();
+cells[targetIndex].set_text(newCode);
+```
+
+### 规则3：★★★★ 测试代码写法
+
+测试结论**不能**只写"测试通过"，必须写清楚判别标准 + 实际结果 + 是否达标：
+
+```
+如果 [判别条件], 算通过; 否则算未通过。
+实际结果: [具体输出值]
+判定: 通过 / 未通过
+```
+
+示例：
+```
+如果聚宽 profit_ratio_max 是 NULL (True), 算通过; 否则未通过。
+实际结果: isna()=[True]
+判定: 通过
+```
+
+### 规则4：★★★★ 读取 cell 输出/报错必须完整不截断
+
+通过 evaluate_script 读取 notebook cell 的输出或错误时，**禁止**用 `.substring(0, N)` 截断。必须用独立字段返回完整文本：
+
+```javascript
+// ✅ 正确：完整返回，不截断
+const errs = lastCell.element.find('.output_error');
+const err_full = errs.length ? errs.text().trim() : '(none)';
+
+const outs = lastCell.element.find('.output_subarea:not(.output_error)');
+let output_full = '';
+outs.each(function() {
+  output_full += this.innerText || this.textContent || '';
+  output_full += '\n';
+});
+output_full = output_full.trim() || '(none)';
+
+return { err_full, output_full };
+```
+
+```javascript
+// ❌ 错误：截断丢失关键信息
+err.text().trim().substring(0, 400)  // MySQL 错误码在末尾，被截断就丢了
+```
+
+### 规则5：★★★★★★ Cell 运行等待 — 用 AskUserQuestion，不在 evaluate_script 中 await
+
+**注入 cell 代码并执行后，不在 evaluate_script 里长时间 await 等待，而是立即返回，然后用 AskUserQuestion 询问用户。**
+
+evaluate_script 的 `protocolTimeout`（约 30 秒）会在长时间 await 时报 `Runtime.callFunctionOn timed out`。但聚宽内核仍在正常运行。
+
+流程：
+
+1. 注入代码到 cell，调用 `J.notebook.execute_cells([idx])`，立即返回
+2. 用 `AskUserQuestion` 询问用户：
+   - **问题：** "cell 是否已运行完毕？"
+   - **问题中必须描述正在运行的 cell 内容**，如 "正在运行 `simulate_wealth_process`（策略回测模拟，2020-2026 约 72 个月度调仓）" 或 "正在运行 Cell[14]（`wealth_process = simulate_wealth_process(...)`）"，让用户清楚知道是哪个 cell 在执行、里面有什么关键函数/变量，而不是让用户去数 cell 序号
+   - **选项"是，已运行完毕"：** 提示用户：当 cell 的 `In [*]` 中的 `*` 变成数字（如 `In [5]`），且 cell 下方有输出结果（正常输出或报错都算）时，才算完成
+   - **选项"否，需要排查"：** 按照规则6和规则7的流程排查
+   - **选项"其他问题"：** 根据用户具体描述处理
+
+3. **如果用户选"是"但排查发现 cell 仍未运行完毕（In [*] 还是星号、无输出）：**
+   - **再次询问**用户，并具体解释："当 cell 的 In [*] 变成 In [数字] 且有输出时才算完成"
+   - 如果用户依旧选"是"且仍未运行完毕 → **不再询问**，按用户选"否"的步骤自行排查
+
+4. **用户选"是"且 cell 确实运行完毕：** 用 evaluate_script 读取输出（完整不截断，见规则4）
+
+### 规则6：★★★★★ 排查内核状态
+
+当用户反馈"cell 未运行"或内核疑似卡住时，按以下诊断流程处理：
+
+**前置判断：** 先通过 `list_pages` 确认是否存在 notebook 页面和 `https://www.joinquant.com/research` 页面。
+
+- **若只存在研究页面** → 直接跳至第(3)步
+- **若两者都存在** → 从第(1)步开始
+
+**(1) 检查 notebook 页面是否有"未连接"字样：**
+对 notebook 页面进行 `take_snapshot`，查找 `StaticText "未连接"`（通常出现在导航栏 "Python 3" 和 "已信任" 之间）。
+- 如果有 → 进入规则7的第(1)步重启内核
+- 如果没有 → 进入第(2)步
+
+**(2) 检查 notebook 页面是否有弹窗：**
+对 notebook 页面进行 `take_snapshot`，查看是否有弹窗。已发现三种弹窗类型：
+
+| 弹窗 heading | 原因 | 处理 |
+|-------------|------|------|
+| `"连接失败"` | notebook 服务器连接断开 | 点"确定" → 规则7(1) |
+| `"内核正在重启"` | **内存溢出**导致内核崩溃，正在自动重启 | 点"确定" → 等待 → 验证内核 |
+| `"内存溢出"` / `"内存不足"` | 内存耗尽警告 | 点"确定" → 规则7(1)，重启后建议分批获取 |
+
+- `"连接失败"` / `"内存溢出"` / `"内存不足"` → 直接进入规则7(1)手动重启
+- `"内核正在重启"` → 点击"确定"关闭弹窗，等待 5-8 秒后重新 `take_snapshot` 检查：
+  - 若显示 "Python 3 已信任" 且无"未连接" → **已自动恢复**，继续
+  - 若仍有"未连接"、或再次弹出"连接失败" → **自动恢复失败，规则7(1)兜底**
+- 没有弹窗 → 进入第(3)步
+
+**(3) 检查研究页面文件后的"运行中"字样：**
+- 切换到 `https://www.joinquant.com/research` 页面，进行 `take_snapshot`
+- 查看文件后面是否有"运行中"字样
+- **如果有"运行中"：**
+  - 说明程序还在正常运行，没有内存溢出
+  - 将 notebook 文件网页关掉（关闭网页不会中断内核运行）
+  - 重新点击该文件打开（防止出现多个该文件的页面）
+  - 再次向用户发 AskUserQuestion 询问是否运行完毕，这次的"否"选项需要提示："你点击了'否'之后，不会再帮你排查内核的运行状态，将直接重启内核。"
+  - 如果用户第二次点击"否" → 进入规则7的第(1)步重启内核
+- **如果没有"运行中"：**
+  - 进入规则7的第(1)步重启内核
+
+### 规则7：★★★★★★ 重启内核规范
+
+当需要重启内核时（从规则6触发或用户直接要求），按以下流程操作：
+
+**(1) 清洁关闭并重启：**
+在 `https://www.joinquant.com/research` 页面中：
+- **如果文件后面有"运行中"字样：** 选中文件前面的小框，点击"关闭"彻底关闭内核。将 notebook 文件页面关掉（如果有的话），重新点击该文件开启内核。
+- **如果没有"运行中"字样：** 将 notebook 文件页面关掉（如果有的话），重新点击该文件开启内核。
+
+> **注意：** `close_page` 后页面的 snapshot uid 会变化，重新点击文件打开 notebook 后需重新 `take_snapshot` 再操作。已验证此流程可成功恢复内核。
+
+**(2) 备选方案 — 点击"重启内核"：**
+如果第(1)步无效，在 notebook 页面点击"重启内核"按钮（环形箭头图标）。
+
+**(3) 最后手段 — 点击"重启研究环境"：**
+如果以上都无效，在研究页面点击"重启研究环境"按钮，重启整个研究环境。
+
+### 规则8：★★★★ 内存管理 — notebook 页面内存 >80% 时主动提醒
+
+**聚宽研究环境给每个用户的内存有限。** 免费用户仅 1G 内存，付费用户可通过购买获得更大内存。在获取大量数据和进行回测时容易出现内存溢出。
+
+**触发条件：** 在 notebook 页面 snapshot 中，如果内存使用指示器（如 `内存使用 850M/1.0G` 即 85%）显示**超过 80%**，必须主动用 AskUserQuestion 询问用户是否需要进行内存管理。
+
+**询问模板：**
+> "notebook 内存使用已超过 80%（[当前值]），建议进行内存管理。是否需要我提供建议？"
+
+**管理策略（如果用户需要）：**
+
+1. **分批获取数据：** 将大规模数据获取按时间切分（如按月/周），每批获取完立即处理并 `del` 释放：
+   ```python
+   # 示例：按月份批获取2016-2026年数据
+   for year in range(2016, 2027):
+       for month in range(1, 13):
+           df_batch = get_price(stocks, start_date=f'{year}-{month:02d}-01', 
+                                end_date=f'{year}-{month:02d}-28', ...)
+           # 处理这批数据...
+           del df_batch  # 释放内存
+   ```
+
+2. **回测场景：** 用完一个周期的数据后，用 `del` 删除该周期的变量，再获取下一周期数据。
+
+3. **通用原则：** 识别占用大量内存的 DataFrame/变量，用完立即 `del`；避免在内存中同时保留不需要的历史数据。
+
+**注意：** 具体策略要根据用户的实际场景调整，核心思路是**分批 + del 释放**。
+
+### 阶段1：查阅 API 文档（写代码前必须完成）
+
+对于用户需求涉及的每个聚宽 API 函数：
+
+**首选 jq-docs MCP：**
+1. 使用 `lookup_function("函数名")` 查阅精确函数文档
+2. 如果参数或返回值不清晰，使用 `search_docs("关键词")` 补充查阅
+3. 对于财务数据表，使用 `lookup_table_columns("表名")` 验证字段名
+
+**jq-docs MCP 不可用时（如大陆无代理），改用在线数据文档：**
+1. 先查 `WebFetch("https://www.joinquant.com/data")` 找到对应数据分类
+2. 再查 `WebFetch("https://www.joinquant.com/help/data/<分类>")` 获取 API 函数、参数和返回值
+3. WebFetch 不完整时 → 用 `firecrawl_scrape` 获取页面完整内容
+
+> **不要用** `https://www.joinquant.com/help/api/help`（策略回测文档，不是研究环境 API）
+
+常用函数速查：
+
+| 类别 | 常用函数 |
+|------|---------|
+| 行情数据 | `get_price`, `history`, `attribute_history`, `get_bars`（多股票 `get_price` 需加 `panel=False`，Panel 已弃用） |
+| 基本面 | `get_fundamentals`, `get_fundamentals_continuously`, `query` |
+| 财务表 | `FINANCE_BALANCE_SHEET`, `FINANCE_INCOME_STATEMENT`, `FINANCE_CASHFLOW_STATEMENT` |
+| 股票信息 | `get_security_info`, `get_all_securities`, `get_index_stocks` |
+| 交易日历 | `get_trade_days`, `get_trade_day` |
+
+### 阶段2：询问用户是否测试 API
+
+查阅完所有需要的 API 后，用 AskUserQuestion 询问用户：
+
+> "查询完 API 文档后，是否需要在 notebook 中先测试一下这些 API 的行为和返回值？"
+
+- **"是，先测试API"：** 对每个 API 函数写测试代码并运行。如果符合预期 → **立即删除测试 cell**，继续写正式代码。如果不符合预期 → 重新查文档、重新测试。
+- **"否，直接写代码"：** 跳过测试，直接进入阶段3。
+
+> **⚠️ 清理规则：** 任何测试 cell、调试 cell、验证 cell（如 `print("kernel OK")`），在确认其不再需要后，**必须立即用 `J.notebook.delete_cells([idx])` 删除**，不得遗留在 notebook 中。这保持 notebook 干净，避免后续代码执行时混入无关输出。
+
+### 阶段3：写代码并运行
+
+1. 在 notebook 最末尾新建 cell 写代码（规则2）
+2. 执行：注入代码 → `J.notebook.execute_cells([idx])` → 立即返回
+3. 用 AskUserQuestion 询问用户 cell 是否运行完毕（规则5）
+4. 完整读取输出（规则4）
+5. 按测试格式报告结果（规则3，如果是测试代码）；如果是正式代码，展示输出
+6. 如果有错误 → 查看错误信息 → 重新查询相关 API 文档 → 修复 → 重新运行
+
+### Cell 执行/读取/删除/内存检查代码模板
+
+> 完整 JS 模板见 [references/code-templates.md](references/code-templates.md)。包含：注入执行 cell、完整读取输出、删除 cell、批量读取所有 cell、检查内存使用。
+
+核心要点：
+- 注入执行：`insert_cell_at_index('code', ncells)` 或回填 `cells[idx].set_text()` → `execute_cells([idx])`
+- 读取输出：`err_full: err.text()` 完整不截断 + `output_full: innerText` 完整
+- 删除 cell：`J.notebook.delete_cells([idx])`
+- 内存读取：snapshot 中找 `"内存使用 XXXM/X.XG"` button
+
+## chrome-devtools 工具速查
+
+| 任务 | 工具 | 备注 |
+|------|------|------|
+| 列出浏览器页面 | `list_pages` | 确认研究页面 + notebook 页面存在 |
+| 选中页面 | `select_page` | `bringToFront: true` |
+| 打开 URL | `navigate_page` 或 `new_page` | `type: "url"` |
+| 查看页面内容 | `take_snapshot` | 显示所有 UI 元素及 uid |
+| 点击按钮 | `click` | 使用 snapshot 中的 uid |
+| 填写文本 | `fill` | 使用 snapshot 中的 uid |
+| 在页面中执行 JS | `evaluate_script` | 用于调用 Jupyter API |
+| 截图 | `take_screenshot` | 可视化验证 |
+
+## jq-docs 工具速查
+
+| 任务 | 工具 | 示例 |
+|------|------|------|
+| 查看所有可用函数 | `list_functions` | 按分类查看 221 个函数 |
+| 函数详细文档 | `lookup_function` | `lookup_function("get_price")` |
+| 数据表字段定义 | `lookup_table_columns` | `lookup_table_columns("balance_sheet")` |
+| 关键词搜索 | `search_docs` | `search_docs("分红")` |
+
+## 常见错误
+
+| 错误做法 | 为什么错 | 正确做法 |
+|---------|---------|---------|
+| 用 `.substring(0, N)` 截断错误信息 | 截断丢失末尾的 MySQL 错误码 | 返回 `err_full: err.text()` — 完整文本（规则4） |
+| 在 evaluate_script 中 `await` | 超时约 30 秒会导致调用失败 | 立即返回，用 AskUserQuestion（规则5） |
+| 使用 `J.notebook.execute_cell(cell)` | 执行不可靠 | 使用 `J.notebook.execute_cells([idx])` |
+| 修改代码在末尾新建 cell | Run All 时旧定义先执行，依赖 cell 用错版本 | 修改已有代码回填原 cell，新增功能末尾新建（规则2） |
+| 写"测试通过"无详情 | 没有证据和审计轨迹 | 完整格式：判别条件 + 实际结果 + 判定（规则3） |
+| 猜测 API 参数 | 回测数据错误 = 财务损失 | 始终先查完整文档（规则1） |
+| Chrome 用默认 user data dir | Chrome 130+ 拒绝调试端口 | 使用 `--user-data-dir=<非默认目录>` |
+| notebook 页面关闭后不复原 | 上下文丢失，内核仍在运行 | 从研究页面重新打开 |
+| 内存>80%不及时管理 | 内存溢出导致内核中断，数据丢失 | 主动提醒用户分批+del释放（规则8） |
+| 盲目关闭所有 Chrome 窗口 | 打断用户现有工作 | 先检查端口和页面，缺什么补什么 |
+
+## 红色警报 — 立即停止自查
+
+- [ ] 还没查阅所有需要的 API 函数 → **停，先查 jq-docs**
+- [ ] 在使用 `.substring()` 限制输出长度 → **停，返回完整文本**
+- [ ] evaluate_script 中有 `await` 等待 → **停，改用 AskUserQuestion**
+- [ ] 新建 cell 不在 notebook 末尾 → **停，用 `insert_cell_at_index('code', ncells)`**
+- [ ] 研究页面不在 `list_pages` 中 → **停，立即重新打开**
+- [ ] 准备写"测试通过" → **停，用完整测试格式**
+- [ ] Chrome 未带 `--user-data-dir` 启动 → **停，重新正确启动 Chrome**
+- [ ] notebook 页面内存 > 80% 未提醒用户 → **停，询问用户是否需要内存管理**
+
+## 参考文件
+
+本 skill 包含两个 reference 文件，在需要精确匹配 UI 模式或 jq-docs 不可用时查阅：
+
+| 文件 | 用途 | 何时查阅 |
+|------|------|---------|
+| [references/notebook-ui-patterns.md](references/notebook-ui-patterns.md) | Snapshot UI 模式：内存指示器、内核状态、3种弹窗 heading、uid 生命周期、工具栏按钮 | 需要识别 snapshot 中的具体元素时 |
+| [references/fallback-doc-urls.md](references/fallback-doc-urls.md) | jq-docs 不可用时的替代文档 URL、已验证的 `help/data/*` 页面、firecrawl/WebFetch 用法 | jq-docs MCP 不可用需要查 API 文档时 |
+| [references/code-templates.md](references/code-templates.md) | 注入执行 cell、完整读取输出、删除 cell、批量读取、内存检查的 JS 模板 | 需要在 notebook 中执行 JS 操作时复制模板 |
