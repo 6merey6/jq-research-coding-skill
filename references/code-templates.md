@@ -1,26 +1,75 @@
 # 代码模板
 
-## 注入代码并执行 Cell
+## 注入代码并执行 Cell（含自动滚动）
+
+**重要：** 执行 cell 前必须调用 `J.notebook.scroll_to_cell(idx)` 将页面滚动到该 cell 位置，让用户直接看到正在运行的 cell，无需手动寻找。
 
 ```javascript
-// 新建 cell（新功能）或回填原 cell（修改已有代码）
 () => {
   const iframe = document.querySelector('iframe');
   const J = iframe.contentWindow.Jupyter;
   if (J && J.notebook) {
-    // 方式A: 新建 cell 在末尾
+    const cellIdx = targetIndex; // 要执行的 cell 序号
+
+    // ★ 自动滚动到目标 cell
+    J.notebook.scroll_to_cell(cellIdx);
+
+    // 延迟让滚动完成，然后执行
+    setTimeout(() => {
+      J.notebook.execute_cells([cellIdx]);
+    }, 200);
+
+    return { cell_index: cellIdx, scrolled: true, executing: true };
+  }
+  return { error: 'Jupyter not available' };
+}
+```
+
+**如果是新建 cell：**
+
+```javascript
+() => {
+  const iframe = document.querySelector('iframe');
+  const J = iframe.contentWindow.Jupyter;
+  if (J && J.notebook) {
     const ncells = J.notebook.get_cells().length;
     J.notebook.insert_cell_at_index('code', ncells);
     const cells = J.notebook.get_cells();
     const newCell = cells[cells.length - 1];
+    const cellIdx = J.notebook.find_cell_index(newCell);
     newCell.set_text(codeString);
-    J.notebook.execute_cells([J.notebook.find_cell_index(newCell)]);
-    return { cell_index: J.notebook.find_cell_index(newCell), executed: true };
 
-    // 方式B: 回填已有 cell（修改代码时用）
-    // const cells = J.notebook.get_cells();
-    // cells[targetIndex].set_text(newCode);
-    // J.notebook.execute_cells([targetIndex]);
+    // ★ 滚动到新 cell
+    J.notebook.scroll_to_cell(cellIdx);
+
+    setTimeout(() => {
+      J.notebook.execute_cells([cellIdx]);
+    }, 200);
+
+    return { cell_index: cellIdx, scrolled: true, executing: true };
+  }
+  return { error: 'Jupyter not available' };
+}
+```
+
+**如果是回填已有 cell：**
+
+```javascript
+() => {
+  const iframe = document.querySelector('iframe');
+  const J = iframe.contentWindow.Jupyter;
+  if (J && J.notebook) {
+    const cells = J.notebook.get_cells();
+    cells[targetIndex].set_text(newCode);
+
+    // ★ 滚动到目标 cell
+    J.notebook.scroll_to_cell(targetIndex);
+
+    setTimeout(() => {
+      J.notebook.execute_cells([targetIndex]);
+    }, 200);
+
+    return { cell_index: targetIndex, scrolled: true, executing: true };
   }
   return { error: 'Jupyter not available' };
 }

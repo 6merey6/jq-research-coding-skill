@@ -280,7 +280,7 @@ evaluate_script 的 `protocolTimeout`（约 30 秒）会在长时间 await 时�
 
 流程：
 
-1. 注入代码到 cell，调用 `J.notebook.execute_cells([idx])`，立即返回
+1. 注入代码到 cell，**先调用 `J.notebook.scroll_to_cell(idx)` 滚动到目标 cell**，再 `J.notebook.execute_cells([idx])` 执行。滚动让用户直接看到正在运行的 cell，无需手动翻找。
 2. 用 `AskUserQuestion` 询问用户：
    - **问题：** "cell 是否已运行完毕？"
    - **问题中必须描述正在运行的 cell 内容**，如 "正在运行 `simulate_wealth_process`（策略回测模拟，2020-2026 约 72 个月度调仓）" 或 "正在运行 Cell[14]（`wealth_process = simulate_wealth_process(...)`）"，让用户清楚知道是哪个 cell 在执行、里面有什么关键函数/变量，而不是让用户去数 cell 序号
