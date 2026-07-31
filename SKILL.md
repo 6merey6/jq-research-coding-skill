@@ -18,19 +18,19 @@ description: Use when writing or debugging code in JoinQuant (聚宽) research n
 | **chrome-devtools** | 浏览器操控（notebook 交互） | `npx -y chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222` |
 | **jq-docs** | 聚宽 API 文档查询 | `uvx --from git+https://github.com/jiaweizhang1995/jq-docs-mcp jq-docs-mcp` |
 
-> ⚠️ **计费提醒：** 此 skill 依赖两个 MCP 服务器，每次操作都会产生 MCP tool call。对于**按工具调用次数计费**的 coding plan，会比按 token 计费的 plan 消耗更多额度。如果你的 plan 按调用次数计费，请注意控制操作粒度，合并可以一次完成的操作。
+> ⚠️ **计费提醒（必须告知用户，告知后停止等待用户说"继续"）：** 此 skill 依赖两个 MCP 服务器，每次操作都会产生 MCP tool call。对于**按工具调用次数计费**的 coding plan，会比按 token 计费的 plan 消耗更多额度。**在 skill 激活后、执行任何操作前，必须先用 AskUserQuestion 告知用户此计费风险，等用户确认"继续"后才能开始工作。**（用户可能需要切换到按 token 计费的 plan。）
 
-### jq-docs 的替代方案（大陆无代理时）
+### jq-docs 的替代方案（jq-docs MCP 不可用时）
 
-jq-docs MCP 需要从 GitHub 拉取，在大陆无代理时可能不可用。此时按优先级使用以下方式查阅聚宽文档：
+jq-docs MCP 需要从 GitHub 拉取，在大陆无代理时不可用。**推荐将 firecrawl MCP 作为主力文档查询工具**（直接抓取聚宽网页，不需 GitHub 代理，已验证可用）。
 
 | 优先级 | 方式 | 适用条件 |
 |--------|------|---------|
-| **1** | jq-docs MCP（`lookup_function`、`search_docs`） | 首选，有代理/GitHub 可访问时 |
-| **2** | firecrawl MCP（`firecrawl_scrape`） | **推荐配置**（可选），抓取完整页面内容，已验证可用 |
+| **1** | firecrawl MCP（`firecrawl_scrape`） | **推荐主力**，抓取 `help/data/*` 完整页面，无 GitHub 依赖 |
+| **2** | jq-docs MCP（`lookup_function`、`search_docs`） | 可选，有代理/GitHub 可访问时可用 |
 | **3** | 原生 WebFetch（内置工具） | 原生 Claude 模型可直接用；非原生模型可能被拦截 |
 
-> firecrawl 为非必需 MCP，询问用户 scope 时需包含"不配置"选项。配置命令见上方 MCP 配置检查。
+> jq-docs MCP 不是必需的。firecrawl 已验证可从 `help/data/stock`、`help/data/futures` 等页面获取完整 API 文档（参数、返回值、示例）。配置 firecrawl 时询问用户 scope，需包含"不配置"选项。
 
 **常用 `help/data/*` 文档 URL：**
 
@@ -156,6 +156,16 @@ powershell.exe -Command "Test-NetConnection -ComputerName 127.0.0.1 -Port 9222 -
 
 严格按照以下步骤顺序执行，每步确认后再进入下一步。
 
+### 第零步：计费提醒（必须执行，阻塞式）
+
+**在任何操作之前，必须先用 AskUserQuestion 告知用户计费风险：**
+
+> "⚠️ 此 skill 依赖两个 MCP 服务器，每次操作都会产生 MCP tool call。按工具调用次数计费的 plan 会比按 token 计费的 plan 消耗更多额度。如果使用按次计费的 plan，建议切换到按 token 计费。准备好了请点击'继续'。"
+
+- 选项："继续" / "我需要切换 plan"
+- 用户选"继续" → 进入第一步
+- 用户选"我需要切换 plan" → 结束当前会话，等用户切换后重新开始
+
 ### 第一步：检查浏览器页面
 
 使用 `list_pages` 查看当前浏览器状态。**必须** 至少包含 `https://www.joinquant.com/research` 页面。
@@ -167,9 +177,14 @@ powershell.exe -Command "Test-NetConnection -ComputerName 127.0.0.1 -Port 9222 -
 
 ### 第二步：选择或创建 Notebook
 
-对研究页面进行 `take_snapshot`。然后使用 AskUserQuestion 询问用户：
+对研究页面进行 `take_snapshot`。然后使用 AskUserQuestion **同时询问两个问题**：
 
-> "你希望我新建一个 notebook 还是打开已有的 notebook？"
+**问题1：** "你希望我新建一个 notebook 还是打开已有的 notebook？"
+- 选项："新建 notebook" / "打开已有 notebook"
+
+**问题2：** "需要我来帮你打开 notebook，还是你自己打开？"
+- 选项"我来帮你打开"：根据用户需求在文件列表中选中对应的 `.ipynb` 文件并打开
+- 选项"我自己打开"：提示用户："请你自己打开 notebook，打开好了再点击这个选项"，用户点击后继续
 
 **如果选择"新建 notebook"：**
 1. 点击"新建"按钮
@@ -177,8 +192,13 @@ powershell.exe -Command "Test-NetConnection -ComputerName 127.0.0.1 -Port 9222 -
 3. 重命名：点击 notebook 标题（"Untitled"），输入新名称，点击"重命名"
 
 **如果选择"打开已有 notebook"：**
-1. 在文件列表中点击目标 `.ipynb` 文件链接
+1. 由用户或 AI 在文件列表中点击目标 `.ipynb` 文件链接
 2. 用 `select_page` 选中新打开的 notebook 页面
+3. **用 `evaluate_script` 读取所有 cell 的代码和输出**（见新步骤 2.5），完全了解 notebook 现有内容后再开始下一步
+
+### 第二步半：阅读已有 notebook 的全部内容（仅"打开已有 notebook"时）
+
+如果是打开已有的 notebook，**在开始任何操作前，必须先用 `evaluate_script` 读取所有 cell 的代码和输出**，完全了解 notebook 现有内容后再进入下一步。模板见 `references/code-templates.md` 中的"读取所有 Cell 内容"。
 
 ### 第三步：确认准备工作完成
 
