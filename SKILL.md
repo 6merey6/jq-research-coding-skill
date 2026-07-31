@@ -94,7 +94,8 @@ jq-docs MCP 需要从 GitHub 拉取，在大陆无代理时不可用。**推荐�
 claude mcp add --scope <用户选择> chrome-devtools -- npx -y chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222
 ```
 
-**jq-docs（必须，无"跳过"选项）：**
+**jq-docs（可选，推荐配置 firecrawl 作为主力）：**
+jq-docs MCP 需要 GitHub 代理，大陆无代理时不可用。firecrawl 已验证可直接抓取聚宽文档，推荐作为主力。询问用户时需包含"不配置"选项：
 ```bash
 claude mcp add --scope <用户选择> jq-docs -- uvx --from git+https://github.com/jiaweizhang1995/jq-docs-mcp jq-docs-mcp
 ```
