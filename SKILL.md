@@ -26,8 +26,8 @@ jq-docs MCP 需要从 GitHub 拉取，在大陆无代理时不可用。**推荐�
 
 | 优先级 | 方式 | 适用条件 |
 |--------|------|---------|
-| **1** | firecrawl MCP（`firecrawl_scrape`） | **推荐主力**，抓取 `help/data/*` 完整页面，无 GitHub 依赖 |
-| **2** | jq-docs MCP（`lookup_function`、`search_docs`） | 可选，有代理/GitHub 可访问时可用 |
+| **1** | jq-docs MCP（`lookup_function`、`search_docs`） | 首选，有代理/GitHub 可访问时可用 |
+| **2** | firecrawl MCP（`firecrawl_scrape`） | **推荐额外配置**，抓取 `help/data/*` 完整页面，无 GitHub 依赖，已验证可用 |
 | **3** | 原生 WebFetch（内置工具） | 原生 Claude 模型可直接用；非原生模型可能被拦截 |
 
 > jq-docs MCP 不是必需的。firecrawl 已验证可从 `help/data/stock`、`help/data/futures` 等页面获取完整 API 文档（参数、返回值、示例）。配置 firecrawl 时询问用户 scope，需包含"不配置"选项。
@@ -157,15 +157,15 @@ powershell.exe -Command "Test-NetConnection -ComputerName 127.0.0.1 -Port 9222 -
 
 严格按照以下步骤顺序执行，每步确认后再进入下一步。
 
-### 第零步：计费提醒（必须执行，阻塞式）
+### 第零步：计费提醒（必须执行，阻塞式，仅首次）
 
-**在任何操作之前，必须先用 AskUserQuestion 告知用户计费风险：**
+**在 skill 首次激活时，告知用户计费风险，然后停下来等待用户说"继续"：**
 
-> "⚠️ 此 skill 依赖两个 MCP 服务器，每次操作都会产生 MCP tool call。按工具调用次数计费的 plan 会比按 token 计费的 plan 消耗更多额度。如果使用按次计费的 plan，建议切换到按 token 计费。准备好了请点击'继续'。"
+> "⚠️ 此 skill 依赖两个 MCP 服务器，每次操作都会产生 MCP tool call。按工具调用次数计费的 plan 会比按 token 计费的 plan 消耗更多额度。如果使用按次计费的 plan，建议切换到按 token 计费。准备好了请说'继续'。"
 
-- 选项："继续" / "我需要切换 plan"
-- 用户选"继续" → 进入第一步
-- 用户选"我需要切换 plan" → 结束当前会话，等用户切换后重新开始
+- 用户说"继续" → 进入第一步
+- 用户说要切换 plan → 等用户切换后重新开始
+- **后续调用 skill 时不要再提此事**
 
 ### 第一步：检查浏览器页面
 
