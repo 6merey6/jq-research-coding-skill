@@ -16,14 +16,14 @@
 
 ## 前置依赖
 
-两个 MCP 服务器为必需：
+一个 MCP 服务器为必需：
 
 | 服务器 | 用途 |
 |--------|------|
 | **chrome-devtools** | 浏览器操控（notebook 交互） |
-| **jq-docs** | 聚宽 API 文档查询（可选，有代理/GitHub 可访问时可用） |
 
 **推荐额外配置（可选）：**
+- **jq-docs** — 聚宽 API 文档查询（有代理/GitHub 可访问时可用）
 - **firecrawl** — jq-docs 不可用时（如中国大陆无代理）的 fallback，见 `references/fallback-doc-urls.md`
 
 ### MCP 配置示例

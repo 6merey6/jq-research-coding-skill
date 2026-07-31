@@ -16,14 +16,14 @@ This skill follows the [Agent Skills spec](https://agentskills.io/specification)
 
 ## Prerequisites
 
-Two MCP servers required:
+One MCP server required:
 
 | Server | Purpose |
 |--------|---------|
 | **chrome-devtools** | Browser control (notebook interaction) |
-| **jq-docs** | JoinQuant API documentation lookup |
 
 **Optional (recommended):**
+- **jq-docs** — JoinQuant API documentation lookup (requires GitHub access)
 - **firecrawl** — fallback when jq-docs is unavailable (e.g., Mainland China without a proxy), see `references/fallback-doc-urls.md`
 
 ### MCP Config Example
