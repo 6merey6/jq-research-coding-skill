@@ -302,6 +302,7 @@ evaluate_script 的 `protocolTimeout`（约 30 秒）会在长时间 await 时�
 流程：
 
 1. 注入代码到 cell，**先调用 `J.notebook.scroll_to_cell(idx)` 滚动到目标 cell**，再 `J.notebook.execute_cells([idx])` 执行。滚动让用户直接看到正在运行的 cell，无需手动翻找。
+   - **★★ 批量运行多个 cell 时（如 `execute_cells([0,1,16,17,18,19,20,21])`），必须 `scroll_to_cell(批次中最后一个cell的idx)`（如 `scroll_to_cell(21)`），而不是第一个**。因为聚宽内核按顺序执行 cell（前一个完成才执行下一个），最后一个 cell 的 `In [*]` 变成数字且有输出时，说明前面所有 cell 都已运行完毕。用户只需盯住最后这个 cell 确认完成即可，无需往下翻找。
 2. 用 `AskUserQuestion` 询问用户：
    - **问题：** "cell 是否已运行完毕？"
    - **问题中必须描述正在运行的 cell 内容**，如 "正在运行 `simulate_wealth_process`（策略回测模拟，2020-2026 约 72 个月度调仓）" 或 "正在运行 Cell[14]（`wealth_process = simulate_wealth_process(...)`）"，让用户清楚知道是哪个 cell 在执行、里面有什么关键函数/变量，而不是让用户去数 cell 序号
@@ -441,7 +442,7 @@ evaluate_script 的 `protocolTimeout`（约 30 秒）会在长时间 await 时�
 ### 阶段3：写代码并运行
 
 1. 在 notebook 最末尾新建 cell 写代码（规则2）
-2. 执行：注入代码 → `J.notebook.execute_cells([idx])` → 立即返回
+2. 执行：注入代码 → `J.notebook.execute_cells([idx])` → 立即返回（批量运行多个 cell 时，先 `scroll_to_cell(最后一个cell的idx)` 滚动到最后，见规则5）
 3. 用 AskUserQuestion 询问用户 cell 是否运行完毕（规则5）
 4. 完整读取输出（规则4）
 5. 按测试格式报告结果（规则3，如果是测试代码）；如果是正式代码，展示输出
@@ -452,7 +453,7 @@ evaluate_script 的 `protocolTimeout`（约 30 秒）会在长时间 await 时�
 > 完整 JS 模板见 [references/code-templates.md](references/code-templates.md)。包含：注入执行 cell、完整读取输出、删除 cell、批量读取所有 cell、检查内存使用。
 
 核心要点：
-- 注入执行：`insert_cell_at_index('code', ncells)` 或回填 `cells[idx].set_text()` → `execute_cells([idx])`
+- 注入执行：`insert_cell_at_index('code', ncells)` 或回填 `cells[idx].set_text()` → `execute_cells([idx])`（批量运行多个 cell 时滚动到最后：`scroll_to_cell(lastIdx)`）
 - 读取输出：`err_full: err.text()` 完整不截断 + `output_full: innerText` 完整
 - 删除 cell：`J.notebook.delete_cells([idx])`
 - 内存读取：snapshot 中找 `"内存使用 XXXM/X.XG"` button

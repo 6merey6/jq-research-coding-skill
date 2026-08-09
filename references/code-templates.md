@@ -4,6 +4,8 @@
 
 **重要：** 执行 cell 前必须调用 `J.notebook.scroll_to_cell(idx)` 将页面滚动到该 cell 位置，让用户直接看到正在运行的 cell，无需手动寻找。
 
+**★★ 批量运行多个 cell 时：** 必须 `scroll_to_cell(批次中最后一个cell的idx)`（不是第一个）。聚宽内核按顺序执行 cell，最后一个 cell 的 `In [*]` 变成数字且有输出时，说明前面所有 cell 都已运行完毕，用户只需盯住最后这个 cell 确认完成。
+
 ```javascript
 () => {
   const iframe = document.querySelector('iframe');
@@ -70,6 +72,30 @@
     }, 200);
 
     return { cell_index: targetIndex, scrolled: true, executing: true };
+  }
+  return { error: 'Jupyter not available' };
+}
+```
+
+**如果是批量执行多个 Cell（滚动到最后一个）：**
+
+```javascript
+() => {
+  const iframe = document.querySelector('iframe');
+  const J = iframe.contentWindow.Jupyter;
+  if (J && J.notebook) {
+    const cellIndices = targetIndices; // 要执行的 cell 序号数组，如 [0,1,16,17,18,19,20,21]
+    const lastIdx = cellIndices[cellIndices.length - 1];
+
+    // ★ 关键：批量执行滚动到最后一个 cell
+    // 内核按顺序执行 cell，最后一个完成 = 前面全部完成，用户只需盯住最后这个
+    J.notebook.scroll_to_cell(lastIdx);
+
+    setTimeout(() => {
+      J.notebook.execute_cells(cellIndices);
+    }, 200);
+
+    return { first: cellIndices[0], last: lastIdx, scrolled_to_last: true, executing: true };
   }
   return { error: 'Jupyter not available' };
 }
