@@ -1,0 +1,26 @@
+MIT License
+
+本目录 (jq-docs/) 包含 jq-docs-mcp 的运行时文件：
+- jq_knowledge.db  — 聚宽 API 文档数据库(221 函数 + 2479 表字段)
+- query_jq_docs.py — 基于该数据库的本地查询 CLI(纯 Python 标准库)
+
+jq-docs-mcp 由 jiaweizhang1995 开发 (https://github.com/jiaweizhang1995/jq-docs-mcp)，
+采用 MIT 协议，此处按 MIT 协议分发。
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

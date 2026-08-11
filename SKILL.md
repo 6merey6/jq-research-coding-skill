@@ -9,30 +9,46 @@ description: Use when writing or debugging code in JoinQuant (聚宽) research n
 
 本 skill 涵盖通过 Chrome DevTools MCP 操作聚宽（JoinQuant）研究 notebook 的完整工作流。强制规范代码编写、执行和调试规则 —— 在回测场景中，数据获取出错可能造成重大财务损失。
 
-## 前置依赖 — MCP 服务器
+## 前置依赖
 
-需要两个 MCP 服务器。通常已在项目 `.mcp.json` 中配置好。
+需要 chrome-devtools MCP（**二选一或同时配置**，skill 会按浏览器状态选择用哪个）：
 
 | 服务器 | 用途 | 配置 |
 |--------|------|------|
-| **chrome-devtools** | 浏览器操控（notebook 交互） | `npx -y chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222` |
-| **jq-docs** | 聚宽 API 文档查询 | `uvx --from git+https://github.com/jiaweizhang1995/jq-docs-mcp jq-docs-mcp` |
+| **chrome-devtools**（browser 模式） | 连接带调试端口(9222)启动的**独立调试 Chrome** | `npx -y chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222` |
+| **chrome-devtools-autoconnect**（autoConnect 模式） | 直接连接你**当前打开的 Chrome**（需 Chrome 144+ + 已启用 `chrome://inspect` 远程调试） | `npx -y chrome-devtools-mcp@latest --autoConnect` |
 
-> ⚠️ **计费提醒（必须告知用户，告知后停止等待用户说"继续"）：** 此 skill 依赖两个 MCP 服务器，每次操作都会产生 MCP tool call。对于**按工具调用次数计费**的 coding plan，会比按 token 计费的 plan 消耗更多额度。**在 skill 激活后、执行任何操作前，必须先用 AskUserQuestion 告知用户此计费风险，等用户确认"继续"后才能开始工作。**（用户可能需要切换到按 token 计费的 plan。）
+**浏览器选择逻辑**：skill 先检测 9222 是否为**合法调试端点**（`/json/version` 返回 HTTP 200，而非仅端口被占）。合法→用 browser 模式；不合法→询问用户二选一（见"智能启动 Chrome"）。
 
-### jq-docs 的替代方案（jq-docs MCP 不可用时）
+**聚宽 API 文档查询无需 MCP**：本 skill 自带 `jq-docs/query_jq_docs.py`（纯 Python 标准库 sqlite3，数据随包 `jq_knowledge.db`，完全离线、零依赖、零注册），替代原 jq-docs MCP。
 
-jq-docs MCP 需要从 GitHub 拉取，在大陆无代理时不可用。**推荐将 firecrawl MCP 作为主力文档查询工具**（直接抓取聚宽网页，不需 GitHub 代理，已验证可用）。
+> ⚠️ **计费提醒（必须告知用户，告知后停止等待用户说"继续"）：** 本 skill 依赖 chrome-devtools MCP（若同时配两个，每次浏览器操作只走其中一个，但两个 MCP 进程都会加载）。对于**按工具调用次数计费**的 coding plan，会比按 token 计费的 plan 消耗更多额度。**在 skill 激活后、执行任何操作前，必须先用 AskUserQuestion 告知用户此计费风险，等用户确认"继续"后才能开始工作。**（用户可能需要切换到按 token 计费的 plan。）
+
+### 聚宽 API 文档查询（自带 CLI + 在线兜底）
+
+**主用本 skill 自带脚本**（完全离线、结构化输出）：
+
+```bash
+# <skill路径> 是本 skill 所在目录; Windows 示例: python .claude/skills/jq-research-coding-skill/jq-docs/query_jq_docs.py ...
+python <skill路径>/jq-docs/query_jq_docs.py lookup  get_price                 # 完整函数文档(签名/参数/返回/示例)
+python <skill路径>/jq-docs/query_jq_docs.py search  融资融券                  # 中英文关键词搜索
+python <skill路径>/jq-docs/query_jq_docs.py table   FINANCE_INCOME_STATEMENT  # 数据表字段
+```
 
 | 优先级 | 方式 | 适用条件 |
 |--------|------|---------|
-| **1** | jq-docs MCP（`lookup_function`、`search_docs`） | 首选，有代理/GitHub 可访问时可用 |
-| **2** | firecrawl MCP（`firecrawl_scrape`） | **推荐额外配置**，抓取 `help/data/*` 完整页面，无 GitHub 依赖，已验证可用 |
+| **1** | 自带 CLI 脚本（`jq-docs/query_jq_docs.py`） | 首选，离线、快、结构化，输出与上游 jq-docs MCP 完全一致 |
+| **2** | firecrawl MCP（`firecrawl_scrape`） | **兜底**，抓 `help/data/*` 完整页面，无 GitHub 依赖，已验证可用 |
 | **3** | 原生 WebFetch（内置工具） | 原生 Claude 模型可直接用；非原生模型可能被拦截 |
 
-> jq-docs MCP 不是必需的。firecrawl 已验证可从 `help/data/stock`、`help/data/futures` 等页面获取完整 API 文档（参数、返回值、示例）。配置 firecrawl 时询问用户 scope，需包含"不配置"选项。
+**★★★ 兜底触发规则（必须立即执行，不能将就）：** 出现以下任一情况，**立即**用 firecrawl/WebFetch 重新查询**该 API** 的聚宽官网文档，确认是否已变更，并**以聚宽官网文档为准**：
+1. **CLI 脚本查询不到**该 API（`not found` 且相似建议也不匹配）
+2. **疑心数据过时**（如涉及近期新增/改名的 API、聚宽公告有变动）
+3. **用查询到的 API 写代码后实际运行报错**（参数名/返回结构不对）→ 很可能是 DB 快照落后于官网，必须回官网核对
 
-**常用 `help/data/*` 文档 URL：**
+> 兜底时先看 `https://www.joinquant.com/help/data/<分类>` 对应页面；`help/api/help` 是策略回测文档，不用于研究环境。
+
+**常用 `help/data/*` 文档 URL（在线兜底用）：**
 
 | 数据分类 | URL |
 |---------|-----|
@@ -41,7 +57,7 @@ jq-docs MCP 需要从 GitHub 拉取，在大陆无代理时不可用。**推荐�
 | 指数数据 | `https://www.joinquant.com/help/data/index` |
 | 期货数据 | `https://www.joinquant.com/help/data/futures` |
 
-**使用示例（jq-docs MCP 不可用时）：**
+**在线兜底示例：**
 - firecrawl: `firecrawl_scrape("https://www.joinquant.com/help/data/stock", formats=["markdown"])` → 获取完整页面后提取 API 信息
 - WebFetch: `WebFetch("https://www.joinquant.com/help/data/stock", "提取 get_price 的参数、返回值和示例")` → 原生模型直接分析
 
@@ -61,50 +77,50 @@ jq-docs MCP 需要从 GitHub 拉取，在大陆无代理时不可用。**推荐�
       "command": "npx",
       "args": ["-y", "chrome-devtools-mcp@latest", "--browser-url=http://127.0.0.1:9222"]
     },
-    "jq-docs": {
+    "chrome-devtools-autoconnect": {
       "type": "stdio",
-      "command": "uvx",
-      "args": ["--from", "git+https://github.com/jiaweizhang1995/jq-docs-mcp", "jq-docs-mcp"]
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--autoConnect"]
     }
   }
 }
 ```
 
-**为什么用 `--browser-url` 而非 `--autoConnect`：**
-- `--autoConnect` 要求 Chrome 144+ 且需在 `chrome://inspect/#remote-debugging` 中手动启用
-- `--browser-url=http://127.0.0.1:9222` 兼容任何 Chrome 版本，更可靠
+**两种模式的取舍：**
+- **browser 模式（`--browser-url`）**：连接"带 `--remote-debugging-port=9222` 启动的独立调试 Chrome"（独立 profile，与日常 Chrome 隔离）。稳定、无弹窗，但需先启动调试 Chrome。
+- **autoConnect 模式（`--autoConnect`）**：直接连接你当前打开的 Chrome（共享登录态），**但需 Chrome 144+**，且要**先在浏览器里启用一次** `chrome://inspect/#remote-debugging` 远程调试，每次连接还会**弹权限框点 Allow**。
+
+> 只用一个时：日常就开普通 Chrome → 配 autoConnect 最省事；想完全隔离 → 配 browser 模式。两个都配则由 skill 按浏览器状态选择（见"智能启动 Chrome"）。
 
 ### MCP 配置检查（skill 激活时执行）
 
-每次操作 notebook 前，逐个验证 MCP 服务器是否可用：
+每次操作 notebook 前，先确认 chrome-devtools 配置情况。**若未配置或不确定，用 AskUserQuestion 询问用户希望配置哪种**，并讲清三者区别：
 
-1. 尝试调用 `list_pages`（chrome-devtools）— 如果工具不存在，说明 MCP 服务器缺失
-2. 尝试调用 `list_functions`（jq-docs）— 如果工具不存在，说明 MCP 服务器缺失
+| 选项 | 能做什么 | 限制 |
+|------|---------|------|
+| **只配 browser 模式**（`chrome-devtools`） | skill 自动启动一个**独立调试 Chrome 窗口**（独立 profile），聚宽 coding 在该专用窗口执行 | 不能用你已打开的浏览器窗口；每次需 skill 启动调试窗口 |
+| **只配 autoConnect 模式**（`chrome-devtools-autoconnect`） | 直接在你**当前打开的 Chrome** 中调试（共享登录态/页面） | ① 需**你手动打开浏览器**（不会自动开）② 需 Chrome 144+ ③ 需在 `chrome://inspect/#remote-debugging` 启用一次远程调试 ④ **每次连接要点 Allow** |
+| **两个都配置**（推荐） | 什么场景都能用：你已开浏览器 → 用 autoConnect 直接在你浏览器里调试；你啥都没开 → skill 用 browser 模式自动开一个调试 Chrome 并启用调试 | 多加载一个 MCP 进程（多计费一点） |
 
-**如果某个服务器缺失**，用 AskUserQuestion 单独询问用户安装到哪个 scope，向用户讲清三者区别后再让用户选择：
+**按用户选择给出安装命令（scope 用 AskUserQuestion 让用户选 project/user/local）：**
+
+```bash
+# browser 模式（独立调试窗口）
+claude mcp add --scope <选择> chrome-devtools -- npx -y chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222
+# autoConnect 模式（连你当前打开的浏览器）
+claude mcp add --scope <选择> chrome-devtools-autoconnect -- npx -y chrome-devtools-mcp@latest --autoConnect
+```
+
+**firecrawl（可选，推荐配置作为在线兜底）：**
+```bash
+claude mcp add --scope <选择> firecrawl -- npx -y @anthropic-ai/mcp-server-firecrawl
+```
 
 | Scope | 存储位置 | 生效范围 |
 |-------|---------|---------|
 | `project` | 项目根目录 `.mcp.json` | 仅当前项目；可通过 git 共享给团队 |
 | `user` | `~/.claude.json` | 所有项目全局生效；可跨机器同步 |
-| `local` | `~/.claude.json` | 所有项目全局生效；标记为 local-only，不跨机器同步 |
-
-**chrome-devtools（必须，无"跳过"选项）：**
-```bash
-claude mcp add --scope <用户选择> chrome-devtools -- npx -y chrome-devtools-mcp@latest --browser-url=http://127.0.0.1:9222
-```
-
-**jq-docs（可选，推荐配置 firecrawl 作为主力）：**
-jq-docs MCP 需要 GitHub 代理，大陆无代理时不可用。firecrawl 已验证可直接抓取聚宽文档，推荐作为主力。询问用户时需包含"不配置"选项：
-```bash
-claude mcp add --scope <用户选择> jq-docs -- uvx --from git+https://github.com/jiaweizhang1995/jq-docs-mcp jq-docs-mcp
-```
-
-**firecrawl（可选，推荐配置）：**
-jq-docs MCP 在大陆无代理时不可用，firecrawl 可作为稳定后备来抓取聚宽在线文档。询问用户时需包含"不配置"选项：
-```bash
-claude mcp add --scope <用户选择> firecrawl -- npx -y @anthropic-ai/mcp-server-firecrawl
-```
+| `local` | `~/.claude.json`(projects 下按项目存) | **仅当前项目 + 当前用户**；标记 local-only，不参与项目同步 |
 
 > 添加 MCP 服务器后需重启会话。每个服务器可配置到不同 scope。
 
@@ -114,19 +130,28 @@ MCP 服务器必须连接到开启了 DevTools 的 Chrome 实例。
 
 ### 智能启动 Chrome（notebook 操作前的必要步骤）
 
-**不要盲目关闭所有 Chrome 窗口。** 先检测再行动：
+**不要盲目关闭所有 Chrome 窗口。** 先检测 9222 是否为**合法调试端点**，再决定用哪个 MCP：
 
-**(A) 先检查 Chrome 调试端口是否已开启：**
+**(A) 检测 9222 是否合法调试端点（不是只看端口被占）：**
 ```bash
-powershell.exe -Command "Test-NetConnection -ComputerName 127.0.0.1 -Port 9222 -InformationLevel Quiet"
+curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9222/json/version
 ```
-如果返回 `True`，说明 Chrome 已在调试模式运行 → 直接使用，跳到 (C)。
+- 返回 `200` → 9222 有合法调试 Chrome → 用 **browser 模式**（`chrome-devtools`）→ 跳到 (C)
+- 返回 `404` 或连接失败 → 9222 无合法调试端点（可能被占用但不是调试 Chrome，如日常 Chrome 异常占位）→ 走 (B) 询问
 
-**(B) 端口未开启，检查是否已有 Chrome 进程在运行：**
-- 如果有 Chrome 进程但没有调试端口 → 需要用户手动关闭所有 Chrome 窗口，然后用调试参数重新启动
-- 如果没有 Chrome 进程 → 直接启动带调试参数的 Chrome
+**(B) 9222 无合法调试端点时，用 AskUserQuestion 让用户二选一：**
 
-启动命令（选择对应平台）：
+**选项1 — 用 browser 模式启动独立调试 Chrome（完全隔离）：**
+- 前提：先释放 9222。若 9222 被占用（如当前是你打开的 Chrome），需你先关闭占用它的浏览器窗口。
+- skill 随后启动带调试参数的独立 Chrome（独立 profile，见下方启动命令），聚宽 coding 在该专用窗口执行。
+- 用 `chrome-devtools`（browser 模式）继续。
+- 若你坚持要"别的端口"（不想关 9222 上的浏览器），需在 `.mcp.json` 另配一个指向该端口的 browser MCP（如 `--browser-url=http://127.0.0.1:9223`）。
+
+**选项2 — 用 autoConnect 模式在当前打开的 Chrome 中调试：**
+- 前提：你**已手动打开** Chrome（autoConnect 不会自动开浏览器）+ 已启用 `chrome://inspect/#remote-debugging` 远程调试（一次性）+ Chrome 144+。
+- 用 `chrome-devtools-autoconnect` 继续；**每次连接会弹权限框，点 Allow**。
+
+启动独立调试 Chrome 的命令（选择对应平台）：
 
 **Windows：**
 ```bash
@@ -161,7 +186,7 @@ powershell.exe -Command "Test-NetConnection -ComputerName 127.0.0.1 -Port 9222 -
 
 **在 skill 首次激活时，告知用户计费风险，然后停下来等待用户说"继续"：**
 
-> "⚠️ 此 skill 依赖两个 MCP 服务器，每次操作都会产生 MCP tool call。按工具调用次数计费的 plan 会比按 token 计费的 plan 消耗更多额度。如果使用按次计费的 plan，建议切换到按 token 计费。准备好了请说'继续'。"
+> "⚠️ 此 skill 依赖 chrome-devtools MCP（可能配了 browser + autoConnect 两个实例，但每次浏览器操作只走其中一个），每次操作都会产生 MCP tool call。按工具调用次数计费的 plan 会比按 token 计费的 plan 消耗更多额度。如果使用按次计费的 plan，建议切换到按 token 计费。准备好了请说'继续'。"
 
 - 用户说"继续" → 进入第一步
 - 用户说要切换 plan → 等用户切换后重新开始
@@ -215,12 +240,12 @@ powershell.exe -Command "Test-NetConnection -ComputerName 127.0.0.1 -Port 9222 -
 
 ### 规则1：★★★★★ 充分查阅 API 文档
 
-写代码前，**必须**使用 jq-docs 查阅用户需求涉及的**全部**聚宽 API 方法。需了解：
+写代码前，**必须**用本 skill 自带脚本 `jq-docs/query_jq_docs.py` 查阅用户需求涉及的**全部**聚宽 API 方法。需了解：
 - 作用（功能说明）
 - 全部参数（名称、类型、是否必填）
 - 返回值结构（类型、列名、索引）
 
-使用 `lookup_function` 查询精确函数名。对于 `query()` 模式和财务数据表，还需用 `lookup_table_columns` 验证字段名。
+用 `lookup <函数名>` 查询精确函数名。对于 `query()` 模式和财务数据表，还需用 `table <表名>` 验证字段名。**若 CLI 查不到、疑心数据过时、或按查询结果写的代码实际运行报错，必须立即用 firecrawl/WebFetch 回聚宽官网重新核对，以官网为准**（见"聚宽 API 文档查询"一节兜底触发规则）。查询命令见"jq-docs 查询速查"。
 
 **严禁猜测 API 行为** — 一个错误的假设可能悄无声息地产生错误的回测数据。
 
@@ -404,17 +429,24 @@ evaluate_script 的 `protocolTimeout`（约 30 秒）会在长时间 await 时�
 
 ### 阶段1：查阅 API 文档（写代码前必须完成）
 
-对于用户需求涉及的每个聚宽 API 函数：
+对于用户需求涉及的每个聚宽 API 函数，先运行本 skill 自带的查询脚本（纯本地，离线）：
 
-**首选 jq-docs MCP：**
-1. 使用 `lookup_function("函数名")` 查阅精确函数文档
-2. 如果参数或返回值不清晰，使用 `search_docs("关键词")` 补充查阅
-3. 对于财务数据表，使用 `lookup_table_columns("表名")` 验证字段名
+```bash
+# <skill路径> 是本 skill 所在目录
+python <skill路径>/jq-docs/query_jq_docs.py lookup get_price                     # 函数完整文档(签名/参数/返回/示例)
+python <skill路径>/jq-docs/query_jq_docs.py search 融资融券                      # 关键词搜索
+python <skill路径>/jq-docs/query_jq_docs.py table FINANCE_INCOME_STATEMENT       # 表字段
+python <skill路径>/jq-docs/query_jq_docs.py sections                             # 列出分类
+python <skill路径>/jq-docs/query_jq_docs.py section "策略API > 策略API介绍"       # 分类内函数
+python <skill路径>/jq-docs/query_jq_docs.py functions                            # 全部函数
+python <skill路径>/jq-docs/query_jq_docs.py search-in-section 分红 "股票数据 > 获取报告期财务数据"  # 分类内搜索
+```
 
-**jq-docs MCP 不可用时（如大陆无代理），改用在线数据文档：**
+**★CLI 查询不到 / 疑心过时 / 实际运行报错时，立即用在线兜底核对聚宽官网：**
 1. 先查 `WebFetch("https://www.joinquant.com/data")` 找到对应数据分类
 2. 再查 `WebFetch("https://www.joinquant.com/help/data/<分类>")` 获取 API 函数、参数和返回值
 3. WebFetch 不完整时 → 用 `firecrawl_scrape` 获取页面完整内容
+4. **以聚宽官网文档为准**（DB 是快照，可能落后于官网）
 
 > **不要用** `https://www.joinquant.com/help/api/help`（策略回测文档，不是研究环境 API）
 
@@ -471,14 +503,19 @@ evaluate_script 的 `protocolTimeout`（约 30 秒）会在长时间 await 时�
 | 在页面中执行 JS | `evaluate_script` | 用于调用 Jupyter API |
 | 截图 | `take_screenshot` | 可视化验证 |
 
-## jq-docs 工具速查
+## jq-docs 查询速查（自带 CLI）
 
-| 任务 | 工具 | 示例 |
-|------|------|------|
-| 查看所有可用函数 | `list_functions` | 按分类查看 221 个函数 |
-| 函数详细文档 | `lookup_function` | `lookup_function("get_price")` |
-| 数据表字段定义 | `lookup_table_columns` | `lookup_table_columns("balance_sheet")` |
-| 关键词搜索 | `search_docs` | `search_docs("分红")` |
+> 脚本路径: `<skill路径>/jq-docs/query_jq_docs.py`。纯本地离线，输出与上游 jq-docs MCP 完全一致。
+
+| 任务 | 命令示例 |
+|------|------|
+| 查看所有可用函数 | `python <skill路径>/jq-docs/query_jq_docs.py functions` |
+| 函数详细文档 | `python <skill路径>/jq-docs/query_jq_docs.py lookup get_price` |
+| 数据表字段定义 | `python <skill路径>/jq-docs/query_jq_docs.py table FINANCE_INCOME_STATEMENT` |
+| 关键词搜索 | `python <skill路径>/jq-docs/query_jq_docs.py search 分红` |
+| 列出所有分类 | `python <skill路径>/jq-docs/query_jq_docs.py sections` |
+| 某分类下函数 | `python <skill路径>/jq-docs/query_jq_docs.py section "策略API > 策略API介绍"` |
+| 分类内搜索 | `python <skill路径>/jq-docs/query_jq_docs.py search-in-section 分红 "股票数据 > 获取报告期财务数据"` |
 
 ## 常见错误
 
@@ -497,7 +534,7 @@ evaluate_script 的 `protocolTimeout`（约 30 秒）会在长时间 await 时�
 
 ## 红色警报 — 立即停止自查
 
-- [ ] 还没查阅所有需要的 API 函数 → **停，先查 jq-docs**
+- [ ] 还没查阅所有需要的 API 函数 → **停，先跑 jq-docs 查询脚本（或在线兜底核对官网）**
 - [ ] 在使用 `.substring()` 限制输出长度 → **停，返回完整文本**
 - [ ] evaluate_script 中有 `await` 等待 → **停，改用 AskUserQuestion**
 - [ ] 新建 cell 不在 notebook 末尾 → **停，用 `insert_cell_at_index('code', ncells)`**
@@ -508,10 +545,11 @@ evaluate_script 的 `protocolTimeout`（约 30 秒）会在长时间 await 时�
 
 ## 参考文件
 
-本 skill 包含两个 reference 文件，在需要精确匹配 UI 模式或 jq-docs 不可用时查阅：
+本 skill 包含多个 reference 文件，在需要精确匹配 UI 模式或在线兜底查 API 文档时查阅：
 
 | 文件 | 用途 | 何时查阅 |
 |------|------|---------|
 | [references/notebook-ui-patterns.md](references/notebook-ui-patterns.md) | Snapshot UI 模式：内存指示器、内核状态、3种弹窗 heading、uid 生命周期、工具栏按钮 | 需要识别 snapshot 中的具体元素时 |
-| [references/fallback-doc-urls.md](references/fallback-doc-urls.md) | jq-docs 不可用时的替代文档 URL、已验证的 `help/data/*` 页面、firecrawl/WebFetch 用法 | jq-docs MCP 不可用需要查 API 文档时 |
+| [references/fallback-doc-urls.md](references/fallback-doc-urls.md) | CLI 脚本查不到/疑心过时时的替代文档 URL、已验证的 `help/data/*` 页面、firecrawl/WebFetch 用法 | 需要在线兜底核对聚宽官网 API 文档时 |
 | [references/code-templates.md](references/code-templates.md) | 注入执行 cell、完整读取输出、删除 cell、批量读取、内存检查的 JS 模板 | 需要在 notebook 中执行 JS 操作时复制模板 |
+| [jq-docs/query_jq_docs.py](jq-docs/query_jq_docs.py) | 聚宽 API 文档查询 CLI（纯本地离线，替代 jq-docs MCP） | 写聚宽代码前查函数签名/参数/表字段 |
