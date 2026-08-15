@@ -13,10 +13,10 @@
   if (J && J.notebook) {
     const cellIdx = targetIndex; // 要执行的 cell 序号
 
-    // ★ 自动滚动到目标 cell
+    // ★ 关键：自动滚动到目标 cell
     J.notebook.scroll_to_cell(cellIdx);
 
-    // 延迟让滚动完成，然后执行
+    // 延迟一小段时间让滚动完成，然后执行
     setTimeout(() => {
       J.notebook.execute_cells([cellIdx]);
     }, 200);
@@ -44,6 +44,7 @@
     // ★ 滚动到新 cell
     J.notebook.scroll_to_cell(cellIdx);
 
+    // 延迟执行让滚动完成
     setTimeout(() => {
       J.notebook.execute_cells([cellIdx]);
     }, 200);
@@ -99,6 +100,7 @@
   }
   return { error: 'Jupyter not available' };
 }
+```
 ```
 
 ## 读取 Cell 输出（完整不截断）

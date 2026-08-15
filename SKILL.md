@@ -345,7 +345,25 @@ evaluate_script 的 `protocolTimeout`（约 30 秒）会在长时间 await 时�
 
 当用户反馈"cell 未运行"或内核疑似卡住时，按以下诊断流程处理：
 
-**信号判断(★新增)：** 聚宽 notebook 运行中至少占用 **100M+** 内存。若内存指示器(如 `内存使用 65M/1.0G`)显示在 **100M 以下**，或"本篇"显示 0.00M，一般是**内核未连接/已断开**(浏览器重连、内核崩溃、页面刷新等)，不是正常空闲。此时立即切到研究页面，**直接执行下面第(3)步**(检查文件后的"运行中"字样)：有"运行中"→ 内核在跑，关 notebook 页面重开(防多页面)；无"运行中"→ 内核已断，按规则7(1)重启内核(重启会清空变量，需重跑 cell 0 及所需定义 cell)。
+**★第0步(优先, 最快最准, 一条 evaluate_script 不依赖 UI)：用 `kernel.is_connected()` 直接判断内核连接**
+
+在 notebook 页 iframe 内 `evaluate_script`(Jupyter 标准 API, 任何 notebook 通用):
+```js
+const win = document.getElementById('research').contentWindow;
+const nb = win.Jupyter.notebook;
+return {
+  connected: nb.kernel ? nb.kernel.is_connected() : false,     // WebSocket 连接状态
+  status:    nb.kernel ? nb.kernel.get_status() : 'no-kernel', // idle/busy/starting/dead/autorestarting
+};
+```
+
+- `connected=false` 或 `status='dead'/'autorestarting'` → **内核未连接/已断** → 按规则7重启内核(重启会清空全部内存变量，需重新运行该 notebook 的所有定义 cell：基础设施/通用工具/函数定义等，不含触发执行的 cell)
+- `connected=true` 且 `status='busy'` → 内核在跑，程序正在执行，**不是卡住** → 回到规则5继续询问用户
+- `connected=true` 且 `status='idle'` → 内核正常空闲，说明 cell 已执行完(正常或已报错) → 用规则4完整读取该 cell 输出/报错
+
+> **is_connected() 边界**：只回答内核 WebSocket 是否连着，**不回答内存占用**。内存 >80% 判断仍走规则8(读内存指示器)。
+
+**兜底路径**(仅当 evaluate_script 无法执行 / iframe 不可达 / 需要确认 UI 状态时才走以下步骤)：
 
 **前置判断：** 先通过 `list_pages` 确认是否存在 notebook 页面和 `https://www.joinquant.com/research` 页面。
 
@@ -387,6 +405,10 @@ evaluate_script 的 `protocolTimeout`（约 30 秒）会在长时间 await 时�
 ### 规则7：★★★★★★ 重启内核规范
 
 当需要重启内核时（从规则6触发或用户直接要求），按以下流程操作：
+
+> **★重启前确认(防误杀运行中程序)**：先按规则6第0步用 `kernel.is_connected()`/`get_status()` 确认确实需要重启。
+> - `connected=true` 且 `status='busy'` → 程序正在运行，**不要重启**(会丢失运行中的取数/执行)，回到规则5继续询问。
+> - `connected=false` 或 `status='dead'/'autorestarting'` → 内核确实断了，执行下面重启步骤。
 
 **(1) 清洁关闭并重启：**
 在 `https://www.joinquant.com/research` 页面中：
