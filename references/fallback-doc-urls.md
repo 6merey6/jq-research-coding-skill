@@ -5,7 +5,7 @@ jq-docs MCP 需要从 GitHub 拉取，在大陆无代理时不可用。本文档
 ## 优先级
 
 1. jq-docs MCP (`lookup_function` / `search_docs`)
-2. firecrawl MCP (`firecrawl_scrape`, 需额外配置，支持完整页面抓取)
+2. **本地 websearch MCP** (open-websearch, `fetchWebContent`/`search`, 本地运行走本地出口, 2026-08实测可访问聚宽官网; ⚠️firecrawl 云端海外被聚宽"非大陆IP"拒)
 3. 原生 WebFetch（仅原生 Claude 模型可用，DeepSeek 等可能被拦截）
 
 ## 已验证的文档 URL
@@ -29,23 +29,27 @@ jq-docs MCP 需要从 GitHub 拉取，在大陆无代理时不可用。本文档
 
 ---
 
-## firecrawl 使用方式
+## 本地 websearch (open-websearch) 使用方式
 
-### 配置（非必需，询问 scope + "不配置"选项）
+### 配置（可选, 推荐作为聚宽官网兜底; 若 WebFetch 正常可不配置）
 
 ```bash
-claude mcp add --scope <project|user|local> firecrawl -- npx -y @anthropic-ai/mcp-server-firecrawl
+# Claude Code 用 stdio(npx 通用方式; 生成全局 npm 缓存可清理, 非项目内)
+claude mcp add --scope <project|user|local> web-search -- npx -y open-websearch@latest
+# env 可选(走本地代理访问受限站点; 默认 duckduckgo)
+# USE_PROXY=true PROXY_URL=http://127.0.0.1:7890 MODE=stdio DEFAULT_SEARCH_ENGINE=duckduckgo
 ```
 
 ### 使用方法
 
 ```javascript
-// 抓取完整页面
-firecrawl_scrape("https://www.joinquant.com/help/data/stock", formats=["markdown"])
-
-// 结果缓存约1小时，相同 URL 可复用
-// 页面内容通常较大（20万+字符），提取所需部分即可
+// 抓取完整页面(本地出口, 2026-08实测可访问聚宽官网 help/data/stock)
+fetchWebContent("https://www.joinquant.com/help/data/stock", maxChars=8000)
+// 多引擎搜索
+search("聚宽 get_all_securities date 退市", limit=5)
 ```
+
+> ★2026-08实测: firecrawl 云端(`mcp.firecrawl.dev`, 海外)被聚宽拒(返回"Service Unavailable in Your Region"); **本地 websearch(open-websearch, 本地运行走本地出口)成功访问聚宽官网**。
 
 ### 已确认可从 `help/data/stock` 查到的 API
 
@@ -70,4 +74,4 @@ firecrawl_scrape("https://www.joinquant.com/help/data/stock", formats=["markdown
 WebFetch("https://www.joinquant.com/help/data/stock", "提取 get_price 的参数列表和返回值类型")
 ```
 
-**注意：** 大陆网络环境可能导致 WebFetch 和 firecrawl 都不稳定。
+**注意：** ⚠️firecrawl 走海外出口被聚宽拒(2026-08实测); 本地 websearch(open-websearch)走本地出口可访问聚宽官网; WebFetch 未经聚宽官网实测。

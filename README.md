@@ -28,7 +28,7 @@
 **聚宽 API 文档查询无需额外 MCP**：本 skill 自带 `jq-docs/query_jq_docs.py`（纯 Python 标准库 sqlite3，数据随包 `jq_knowledge.db`，完全离线、零依赖、零注册），替代原 jq-docs MCP。
 
 **推荐额外配置（可选）：**
-- **firecrawl** — 自带 CLI 查不到/疑心数据过时/实际运行报错时，在线核对聚宽官网的 fallback，见 `references/fallback-doc-urls.md`
+- **本地 websearch(open-websearch)** — 自带 CLI 查不到/疑心数据过时/实际运行报错时，在线核对聚宽官网的 fallback，见 `references/fallback-doc-urls.md`（2026-08实测: ⚠️firecrawl 云端海外被聚宽"非大陆IP"拒, 本地 websearch 走本地出口可访问聚宽官网; **可选**, WebFetch 正常可不配置）
 
 ### MCP 配置示例
 
@@ -169,7 +169,7 @@ skill 会直接选中 notebook 页面开始工作，不重复打开任何页面�
 
 激活后，skill 会自动执行以下闭环：
 
-1. **查文档** — 用本 skill 自带 `jq-docs/query_jq_docs.py`（或 firecrawl/WebFetch 在线兜底核对官网）查询需求涉及的聚宽 API
+1. **查文档** — 用本 skill 自带 `jq-docs/query_jq_docs.py`（或本地 websearch(open-websearch)/WebFetch 在线兜底核对官网）查询需求涉及的聚宽 API
 2. **问测试** — 询问是否先测试 API（可选）
 3. **写代码** — 在 notebook 中注入代码、执行、读取结果（完整不截断）
 4. **清理** — 测试通过后自动删除测试 cell
@@ -196,7 +196,7 @@ references/
 - ✅ Chrome 智能启动检测（先查端口再查页面）
 - ✅ Notebook 创建/打开/重命名
 - ✅ Cell 代码注入、执行、完整读取（不截断）
-- ✅ 聚宽 API 文档查询（自带 `jq-docs/query_jq_docs.py` 优先，firecrawl/WebFetch 在线兜底）
+- ✅ 聚宽 API 文档查询（自带 `jq-docs/query_jq_docs.py` 优先，本地 websearch(open-websearch)/WebFetch 在线兜底）
 - ✅ 内核断开诊断（3 种弹窗类型识别）
 - ✅ 内核重启（手动关闭→重新打开 / 自动恢复+规则7兜底）
 - ✅ 内存管理（>80% 主动警告+分批+del 释放）

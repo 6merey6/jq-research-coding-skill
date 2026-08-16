@@ -26,7 +26,7 @@ One chrome-devtools MCP is required (**pick one or configure both**; the skill c
 > **Browser selection logic**: the skill first checks whether 9222 is a valid debug endpoint (`/json/version` returns HTTP 200, not just the port being open). If valid → browser mode; otherwise → ask the user to choose (see Usage).
 
 **Optional (recommended):**
-- **firecrawl** — fallback to verify JoinQuant docs online when the built-in CLI can't find / data seems stale / runtime errors, see `references/fallback-doc-urls.md`
+- **Local websearch (open-websearch)** — fallback to verify JoinQuant docs online when the built-in CLI can't find / data seems stale / runtime errors, see `references/fallback-doc-urls.md` (2026-08 tested: ⚠️firecrawl cloud is rejected by JoinQuant for non-mainland-IP; local websearch uses local egress and can access JoinQuant docs; **optional**, skip if WebFetch works)
 
 **JoinQuant API doc lookup needs NO extra MCP**: this skill bundles `jq-docs/query_jq_docs.py` (pure Python stdlib sqlite3, data shipped in `jq_knowledge.db`, fully offline, zero dependencies, zero registration) — replacing the former jq-docs MCP.
 
@@ -162,7 +162,7 @@ The skill will directly select the notebook page and start working — no duplic
 
 Once activated, the skill executes the following closed loop:
 
-1. **Look up docs** — query JoinQuant APIs via the bundled `jq-docs/query_jq_docs.py` (or firecrawl/WebFetch online fallback to verify the official docs)
+1. **Look up docs** — query JoinQuant APIs via the bundled `jq-docs/query_jq_docs.py` (or local websearch (open-websearch)/WebFetch online fallback to verify the official docs)
 2. **Ask about testing** — ask if you want to test the APIs first (optional)
 3. **Write code** — inject code into notebook, execute, read results (full text, no truncation)
 4. **Clean up** — automatically delete test cells after verification
@@ -189,7 +189,7 @@ references/
 - ✅ Smart Chrome startup detection (check port, then pages)
 - ✅ Notebook creation, opening, renaming
 - ✅ Cell code injection, execution, and complete output reading (no truncation)
-- ✅ JoinQuant API doc lookup (bundled `jq-docs/query_jq_docs.py` first, firecrawl/WebFetch online fallback)
+- ✅ JoinQuant API doc lookup (bundled `jq-docs/query_jq_docs.py` first, local websearch (open-websearch)/WebFetch online fallback)
 - ✅ Kernel disconnection diagnostics (3 popup types)
 - ✅ Kernel restart (manual shutdown → reopen / auto-recovery with fallback)
 - ✅ Memory management (>80% proactive warning + batch processing + `del` cleanup)

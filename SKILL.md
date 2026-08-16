@@ -38,10 +38,10 @@ python <skill路径>/jq-docs/query_jq_docs.py table   FINANCE_INCOME_STATEMENT  
 | 优先级 | 方式 | 适用条件 |
 |--------|------|---------|
 | **1** | 自带 CLI 脚本（`jq-docs/query_jq_docs.py`） | 首选，离线、快、结构化，输出与上游 jq-docs MCP 完全一致 |
-| **2** | firecrawl MCP（`firecrawl_scrape`） | **兜底**，抓 `help/data/*` 完整页面，无 GitHub 依赖，已验证可用 |
+| **2** | **本地 websearch MCP**（open-websearch, `search`/`fetchWebContent`） | **兜底**，本地运行走本地网络出口，可访问大陆 IP 限制的聚宽官网(2026-08实测: firecrawl 海外服务器被聚宽拒, 本地 websearch 成功) |
 | **3** | 原生 WebFetch（内置工具） | 原生 Claude 模型可直接用；非原生模型可能被拦截 |
 
-**★★★ 兜底触发规则（必须立即执行，不能将就）：** 出现以下任一情况，**立即**用 firecrawl/WebFetch 重新查询**该 API** 的聚宽官网文档，确认是否已变更，并**以聚宽官网文档为准**：
+**★★★ 兜底触发规则（必须立即执行，不能将就）：** 出现以下任一情况，**立即**用本地 websearch(open-websearch)/WebFetch 重新查询**该 API** 的聚宽官网文档，确认是否已变更，并**以聚宽官网文档为准**：
 1. **CLI 脚本查询不到**该 API（`not found` 且相似建议也不匹配）
 2. **疑心数据过时**（如涉及近期新增/改名的 API、聚宽公告有变动）
 3. **用查询到的 API 写代码后实际运行报错**（参数名/返回结构不对）→ 很可能是 DB 快照落后于官网，必须回官网核对
@@ -58,14 +58,14 @@ python <skill路径>/jq-docs/query_jq_docs.py table   FINANCE_INCOME_STATEMENT  
 | 期货数据 | `https://www.joinquant.com/help/data/futures` |
 
 **在线兜底示例：**
-- firecrawl: `firecrawl_scrape("https://www.joinquant.com/help/data/stock", formats=["markdown"])` → 获取完整页面后提取 API 信息
+- 本地 websearch(open-websearch): `search("聚宽 get_all_securities date 退市", limit=5)` 或 `fetchWebContent("https://www.joinquant.com/help/data/stock", maxChars=8000)` → 本地出口访问聚宽官网(2026-08实测成功)
 - WebFetch: `WebFetch("https://www.joinquant.com/help/data/stock", "提取 get_price 的参数、返回值和示例")` → 原生模型直接分析
 
 > **注意：**
 > - `https://www.joinquant.com/help/api/help` 是策略回测文档（含 `order`/`initialize`/`handle_data`），不适用于研究环境，不要引用
 > - 只在 `help/data/*` 中查找研究环境可用的 API
-> - 非原生 Claude 模型（如 DeepSeek）可能无法使用 WebFetch；建议额外配置 firecrawl MCP
-> - 大陆网络环境可能导致任何在线抓取方式都不稳定
+> - 非原生 Claude 模型（如 DeepSeek）可能无法使用 WebFetch；建议配置本地 websearch(open-websearch) MCP 作兜底
+> - **⚠️ firecrawl 走海外服务器被聚宽拒(2026-08实测)**: 聚宽 2026-08 起仅大陆 IP, firecrawl 云端(`mcp.firecrawl.dev`, 海外)返回"Service Unavailable in Your Region"; **本地 websearch(open-websearch, 本地运行走本地出口)可正常访问**(实测成功抓取 help/data/stock)。推荐配置本地 websearch 替代 firecrawl 做聚宽官网兜底
 
 ### 推荐 `.mcp.json` 配置（project scope）
 
@@ -111,9 +111,15 @@ claude mcp add --scope <选择> chrome-devtools -- npx -y chrome-devtools-mcp@la
 claude mcp add --scope <选择> chrome-devtools-autoconnect -- npx -y chrome-devtools-mcp@latest --autoConnect
 ```
 
-**firecrawl（可选，推荐配置作为在线兜底）：**
+**本地 websearch（open-websearch, 可选, 推荐作为聚宽官网在线兜底）：**
+> ★2026-08实测: firecrawl 云端(`mcp.firecrawl.dev`, 海外服务器)被聚宽"非大陆 IP"拒绝(返回"Service Unavailable in Your Region"); **open-websearch 本地运行走本地出口, 可正常访问聚宽官网**(实测成功)。
+> 配置原因: claude code 外接别的模型可能导致内置 WebFetch 不可用; 本地 websearch 是**可选**兜底, **若 WebFetch 正常可不配置**。
+> open-websearch 支持两种连接: **stdio**(Claude Code 标准, 按需启动进程, 推荐) 与 **streamableHttp/SSE**(需先 `open-websearch serve` 常驻本地服务, 供 Claude Desktop/Cherry Studio 等)。
 ```bash
-claude mcp add --scope <选择> firecrawl -- npx -y @anthropic-ai/mcp-server-firecrawl
+# Claude Code 推荐用 stdio(npx 通用方式; 生成全局 npm 缓存可清理, 非项目内)
+claude mcp add --scope <选择> web-search -- npx -y open-websearch@latest
+# env 可选(走本地代理访问受限站点; 默认 duckduckgo)
+# USE_PROXY=true PROXY_URL=http://127.0.0.1:7890 MODE=stdio DEFAULT_SEARCH_ENGINE=duckduckgo
 ```
 
 | Scope | 存储位置 | 生效范围 |
@@ -245,7 +251,7 @@ curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9222/json/version
 - 全部参数（名称、类型、是否必填）
 - 返回值结构（类型、列名、索引）
 
-用 `lookup <函数名>` 查询精确函数名。对于 `query()` 模式和财务数据表，还需用 `table <表名>` 验证字段名。**若 CLI 查不到、疑心数据过时、或按查询结果写的代码实际运行报错，必须立即用 firecrawl/WebFetch 回聚宽官网重新核对，以官网为准**（见"聚宽 API 文档查询"一节兜底触发规则）。查询命令见"jq-docs 查询速查"。
+用 `lookup <函数名>` 查询精确函数名。对于 `query()` 模式和财务数据表，还需用 `table <表名>` 验证字段名。**若 CLI 查不到、疑心数据过时、或按查询结果写的代码实际运行报错，必须立即用本地 websearch(open-websearch)/WebFetch 回聚宽官网重新核对，以官网为准**（见"聚宽 API 文档查询"一节兜底触发规则）。查询命令见"jq-docs 查询速查"。
 
 **严禁猜测 API 行为** — 一个错误的假设可能悄无声息地产生错误的回测数据。
 
@@ -465,7 +471,7 @@ python <skill路径>/jq-docs/query_jq_docs.py search-in-section 分红 "股票�
 **★CLI 查询不到 / 疑心过时 / 实际运行报错时，立即用在线兜底核对聚宽官网：**
 1. 先查 `WebFetch("https://www.joinquant.com/data")` 找到对应数据分类
 2. 再查 `WebFetch("https://www.joinquant.com/help/data/<分类>")` 获取 API 函数、参数和返回值
-3. WebFetch 不完整时 → 用 `firecrawl_scrape` 获取页面完整内容
+3. WebFetch 不完整时 → 用本地 websearch(open-websearch) `fetchWebContent` 获取页面完整内容
 4. **以聚宽官网文档为准**（DB 是快照，可能落后于官网）
 
 > **不要用** `https://www.joinquant.com/help/api/help`（策略回测文档，不是研究环境 API）
@@ -570,6 +576,6 @@ python <skill路径>/jq-docs/query_jq_docs.py search-in-section 分红 "股票�
 | 文件 | 用途 | 何时查阅 |
 |------|------|---------|
 | [references/notebook-ui-patterns.md](references/notebook-ui-patterns.md) | Snapshot UI 模式：内存指示器、内核状态、3种弹窗 heading、uid 生命周期、工具栏按钮 | 需要识别 snapshot 中的具体元素时 |
-| [references/fallback-doc-urls.md](references/fallback-doc-urls.md) | CLI 脚本查不到/疑心过时时的替代文档 URL、已验证的 `help/data/*` 页面、firecrawl/WebFetch 用法 | 需要在线兜底核对聚宽官网 API 文档时 |
+| [references/fallback-doc-urls.md](references/fallback-doc-urls.md) | CLI 脚本查不到/疑心过时时的替代文档 URL、已验证的 `help/data/*` 页面、本地 websearch(open-websearch)/WebFetch 用法 | 需要在线兜底核对聚宽官网 API 文档时 |
 | [references/code-templates.md](references/code-templates.md) | 注入执行 cell、完整读取输出、删除 cell、批量读取、内存检查的 JS 模板 | 需要在 notebook 中执行 JS 操作时复制模板 |
 | [jq-docs/query_jq_docs.py](jq-docs/query_jq_docs.py) | 聚宽 API 文档查询 CLI（纯本地离线，替代 jq-docs MCP） | 写聚宽代码前查函数签名/参数/表字段 |
